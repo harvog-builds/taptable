@@ -1,0 +1,19 @@
+TapTable
+Copyright (c) 2026 Harvog
+Licensed under the MIT License (see LICENSE).
+
+This product includes third-party software:
+
+------------------------------------------------------------------------
+mobile-drag-drop  (scripts/vendor/mobile-drag-drop.js)
+  Copyright (c) Tim Ruffles
+  Licensed under the MIT License.
+  Source: https://github.com/timruffles/mobile-drag-drop
+  Vendored unmodified (a provenance header was added at the top of the
+  file). See that header and the upstream repository for the full license
+  text.
+------------------------------------------------------------------------
+
+"Foundry VTT" and "Foundry Virtual Tabletop" are trademarks of Foundry
+Gaming LLC. TapTable is an independent module for Foundry VTT and is not
+affiliated with, endorsed by, or sponsored by Foundry Gaming LLC.

@@ -1,0 +1,358 @@
+/* taptable — dnd5e 5.3.3 phone rules.
+ * EVERY selector in this file is scoped under body.pf-mobile: a desktop client
+ * matches nothing here — zero desktop impact by construction.
+ * Loaded into layer(modules), which out-cascades dnd5e's layer(system): the
+ * min-width/min-height floor kill below needs NO !important. The only !important
+ * in this file is the left-pin, which must beat core's inline `style.left`. */
+
+/* ---------------------------------------------------------------- */
+/* 1. Kill the actor-sheet size floors. M1 covered only .character   */
+/*    (min-width 800px, dnd5e.css:8670); the M3 GM probe caught the  */
+/*    NPC sheet stuck at ~700px wide at a 412px viewport because its */
+/*    own floor beats the pf-max width — every dnd5e actor sheet     */
+/*    type carries one (npc 700px, dnd5e.css:10073; npc.limited      */
+/*    600px, :10674; group 700px, :10742; vehicle 700/1000px,        */
+/*    :11500,11504). Once neutralized, core's _updatePosition()      */
+/*    resizes the window to the viewport by itself.                  */
+/* ---------------------------------------------------------------- */
+body.pf-mobile .dnd5e2.sheet.actor:not(.minimized, .minimizing, .maximizing) {
+  min-width: 0;
+  min-height: 0;
+}
+
+/* ---------------------------------------------------------------- */
+/* 2. Full-width actor sheets + hidden tab rail (M3).                */
+/*    M1 clamped to calc(100vw - 46px) to keep the rail's gutter     */
+/*    on-screen, but M2's pf-max forces width:100vw — the rail       */
+/*    (nav.tabs.tabs-right at left:100%, dnd5e.css:3470) went        */
+/*    off-screen and unclamped content clipped on the right. M3      */
+/*    resolves the conflict the other way: the rail is hidden on     */
+/*    phones (the shell's sheet-mode bottom nav replaces it —        */
+/*    shell.js #buildSheetNav) and the sheet takes the full          */
+/*    viewport width everywhere.                                     */
+/*    left needs !important because core positions via inline style; */
+/*    window dragging is meaningless on a phone.                     */
+/* ---------------------------------------------------------------- */
+body.pf-mobile .dnd5e2.sheet.actor:not(.minimized) {
+  max-width: 100vw;
+  max-height: var(--pf-vh, 100dvh);
+  left: 0 !important;
+}
+/* The rail is hidden, NOT removed: the sheet-mode nav forwards taps to these
+ * items (display:none elements still receive programmatic .click(), and dnd5e's
+ * data-action="tab" listener is delegated from the sheet root). */
+body.pf-mobile .dnd5e2.sheet.actor nav.tabs:is(.tabs-right, .tabs-left) {
+  display: none;
+}
+
+/* ---------------------------------------------------------------- */
+/* 3. Dialog clamp at the shared ancestor: covers ActivityUsageDialog */
+/*    and every Dialog5e/BaseConfigSheet descendant in one rule.      */
+/*    (The sheet rule above is more specific and keeps its tighter    */
+/*    clamp.)                                                         */
+/* ---------------------------------------------------------------- */
+body.pf-mobile .application.dnd5e2 {
+  max-width: 100vw;
+}
+
+/* ---------------------------------------------------------------- */
+/* 4. Hide the 300px header art (dnd5e.css:8681) — dead weight at    */
+/*    phone widths.                                                   */
+/* ---------------------------------------------------------------- */
+body.pf-mobile .dnd5e2.sheet.actor.character:not(.minimized) .window-content::before {
+  display: none;
+}
+
+/* ---------------------------------------------------------------- */
+/* 5. Ability strip: stock sheet absolutely overlays it on the       */
+/*    header's right (dnd5e.css:9553-9563), which overflows at phone  */
+/*    width. Flow it between header and body instead (window-content  */
+/*    is a flex column, foundry2.css .application .window-content).   */
+/* ---------------------------------------------------------------- */
+body.pf-mobile .dnd5e2.sheet.actor.character .window-content > .sheet-header {
+  order: -2;
+}
+body.pf-mobile .dnd5e2.sheet.actor.character .window-content > .ability-scores {
+  position: static;
+  order: -1;
+  pointer-events: auto;
+}
+body.pf-mobile .dnd5e2.sheet.actor.character .ability-scores .rows {
+  width: auto;
+  max-width: 100%;
+  margin: 0;
+  padding: 0.25rem 0.5rem;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px;
+}
+/* The .top/.bottom sub-rows hold the pills in single 22px-gap rows (494px for six
+ * pills — probe-measured overflow at 412px). Wrap them into centered rows of three:
+ * 232px = 3 x 64px pills + 2 x 8px gaps + slack. */
+body.pf-mobile .dnd5e2.sheet.actor.character .ability-scores .rows > * {
+  flex: 1 1 100%;
+  max-width: 232px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin: 0 auto;
+  padding: 0;
+  min-height: 0;
+}
+body.pf-mobile .dnd5e2.sheet.actor.character .ability-scores .rows > *:empty {
+  display: none;
+}
+
+/* ---------------------------------------------------------------- */
+/* 6. Portrait restack: collapse the sidebar + tab-body grid          */
+/*    (dnd5e.css:8875) to one column when the sheet body is narrow.   */
+/*    The named container avoids hijacking dnd5e's own unnamed        */
+/*    container queries (.saves / .ability-scores contexts).          */
+/* ---------------------------------------------------------------- */
+body.pf-mobile .dnd5e2.sheet.actor.character .sheet-body {
+  container: pf-sheet / inline-size;
+}
+@container pf-sheet (width < 500px) {
+  body.pf-mobile .dnd5e2.sheet.actor.character .sheet-body .main-content {
+    grid-template-columns: 1fr;
+  }
+  body.pf-mobile .dnd5e2.sheet.actor.character .sheet-body .main-content > * {
+    min-width: 0;
+  }
+  /* The details tab's own two-column grid (260px 1fr, dnd5e.css:9290) also
+   * collapses, so skills and the saves/traits column stack instead of cramping. */
+  body.pf-mobile .dnd5e2.sheet.actor.character .sheet-body .tab-body .col-2 {
+    grid-template-columns: 1fr;
+  }
+  /* Details tab, right column: saves + the background/species/creature-type
+   * pills sit side by side in .top.flexrow (character-details.hbs, dnd5e.css:9302)
+   * — at 412px that row overflows and the pill cards clip at the right edge
+   * (user-reported cutoff). Wrap the row so each block takes the full width. */
+  body.pf-mobile .dnd5e2.sheet.actor.character .sheet-body .tab-body .col-2 .right .top {
+    flex-wrap: wrap;
+  }
+  body.pf-mobile .dnd5e2.sheet.actor.character .sheet-body .tab-body .col-2 .right .top > * {
+    flex: 1 1 100%;
+    min-width: 0;
+  }
+  /* The pills themselves keep a 280px max-width (dnd5e.css:3671); centered they
+   * read as cards instead of hugging the clipped right edge. */
+  body.pf-mobile .dnd5e2.sheet.actor.character .sheet-body .tab-body .col-2 .right .pills-lg {
+    align-items: center;
+  }
+  /* Biography tab (probe-measured maxRight 533px at a 412px viewport):
+   * .characteristics is a hard 520px three-column grid (dnd5e.css:9731-9735) —
+   * make it fluid; .middle holds two flex:1 columns side by side
+   * (dnd5e.css:9715-9723) — wrap them into full-width rows. */
+  body.pf-mobile .dnd5e2.sheet.actor.character .tab[data-tab="biography"] .characteristics {
+    width: 100%;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  }
+  body.pf-mobile .dnd5e2.sheet.actor.character .tab[data-tab="biography"] > .middle {
+    flex-wrap: wrap;
+  }
+  body.pf-mobile .dnd5e2.sheet.actor.character .tab[data-tab="biography"] > .middle > * {
+    flex: 1 1 100%;
+    min-width: 0;
+  }
+}
+
+/* ---------------------------------------------------------------- */
+/* 8. Header width fix (M3 412px audit). The character header is a   */
+/*    grid of 1fr + a fixed 280px right column (dnd5e.css:8697 with  */
+/*    --dnd5e-sheet-header-right-width: 280px, dnd5e.css:8634); the  */
+/*    name column's min-content floor (188px measured with "Cassius  */
+/*    Vael") pushed the right block to 468px — level badge, XP label */
+/*    and XP bar clipped at the right edge on EVERY tab. Shrink the  */
+/*    right column, let both tracks shrink below content             */
+/*    (minmax(0, …)), and wrap long names instead of overflowing.    */
+/*    Lives OUTSIDE the @container block above: the header is a      */
+/*    sibling of .sheet-body, not a descendant, so pf-sheet queries  */
+/*    never reach it. The .left padding override out-cascades        */
+/*    dnd5e's .left.optional-ability-* paddings (dnd5e.css:8716,     */
+/*    8722) via layer(modules) > layer(system), like everything      */
+/*    else in this file.                                             */
+/* ---------------------------------------------------------------- */
+body.pf-mobile .dnd5e2.sheet.actor.character {
+  --dnd5e-sheet-header-right-width: 224px;
+}
+body.pf-mobile .dnd5e2.sheet.actor.character .sheet-header {
+  grid-template-columns: minmax(0, 1fr) minmax(0, var(--dnd5e-sheet-header-right-width));
+}
+body.pf-mobile .dnd5e2.sheet.actor.character .sheet-header > .left {
+  padding: 0 0.75rem 0 1rem;
+  min-width: 0;
+}
+body.pf-mobile .dnd5e2.sheet.actor.character .sheet-header > .left .document-name {
+  font-size: var(--font-size-32, 2rem);
+  overflow-wrap: anywhere;
+}
+body.pf-mobile .dnd5e2.sheet.actor.character .sheet-header > .right {
+  --padding-right: 1.25rem;
+}
+
+/* ---------------------------------------------------------------- */
+/* 9. NPC header restack (M3 GM-probe audit: .right.stats measured   */
+/*    at right=466px on a 412px viewport). The NPC header is a flex  */
+/*    row of a fixed 180px portrait column (npc-scoped               */
+/*    --dnd5e-sheet-sidebar-width, dnd5e.css:10036; flex-basis at    */
+/*    :10100-10101) + the stats block — wrap so the stats take a     */
+/*    full-width second row on phones.                               */
+/* ---------------------------------------------------------------- */
+body.pf-mobile .dnd5e2.sheet.actor.npc .sheet-header {
+  flex-wrap: wrap;
+}
+body.pf-mobile .dnd5e2.sheet.actor.npc .sheet-header > .right.stats {
+  flex: 1 1 100%;
+  min-width: 0;
+}
+
+/* ---------------------------------------------------------------- */
+/* 10. Sidebar collapse caret: a 16px button absolutely positioned   */
+/*    OFF the sidebar's right edge (dnd5e.css:7788, inset left       */
+/*    var(--sidebar-size)) — at full phone width it pokes past the   */
+/*    viewport (probe: right=427 at 412px, every tab), its 16px      */
+/*    hit area is untappable anyway, and collapsing a stacked        */
+/*    full-width sidebar is meaningless in the single-column         */
+/*    restack. Hide it on phones.                                    */
+/* ---------------------------------------------------------------- */
+body.pf-mobile .dnd5e2.sheet.actor .sidebar-collapser {
+  display: none;
+}
+
+/* ---------------------------------------------------------------- */
+/* 7. Touch targets.                                                  */
+/* ---------------------------------------------------------------- */
+
+/* Tab rail items: 30px stock (dnd5e.css:3445) -> 44px. */
+body.pf-mobile .dnd5e2.vertical-tabs nav.tabs > .item {
+  flex: 0 0 44px;
+}
+
+/* Primary roll targets: ability pills and skill/tool/save rows >= 44px tall. */
+body.pf-mobile .dnd5e2.sheet.actor.character .ability-scores .ability-score {
+  min-height: 44px;
+}
+body.pf-mobile .dnd5e2.sheet.actor.character .sheet-body :is(.skills, .tools, .saves) > ul > li {
+  min-height: 44px;
+}
+
+/* slide-toggle renders in light DOM (useShadowRoot=false, dnd5e.mjs:65309), so its
+ * touch hit-area extension lives here rather than in the sheet5e.js shadow patch:
+ * grow the vertical hit zone to 44px without moving the visuals. */
+body.pf-mobile .dnd5e2 slide-toggle {
+  position: relative;
+}
+body.pf-mobile .dnd5e2 slide-toggle::after {
+  content: "";
+  position: absolute;
+  inset: calc((100% - 44px) / 2) 0;
+}
+
+/* damage-application / effect-application chat trays render in light DOM (no static
+ * CSS on 5.3.3 — see sheet5e.js header), so their touch sizing lives here. */
+body.pf-mobile :is(damage-application, effect-application) .card-tray > label {
+  min-height: 44px;
+}
+body.pf-mobile :is(damage-application, effect-application) button {
+  min-height: 44px;
+}
+
+/* Edit-mode toggle. The dnd5e sheet-mode switch is a header <slide-toggle class="mode-
+ * slider"> (dnd5e.mjs:1712-1716), sized 36x20 by the slide-toggle base (dnd5e.css:1791-
+ * 1799) then shrunk by transform:scale(0.9) on every header slide-toggle (dnd5e.css:4542-
+ * 4544) — measured 32x18 stock, far under a 44px tap target. The generic slide-toggle
+ * ::after above only padded a hidden hit-zone; the toggle's own box (what a fingertip and
+ * a hit-test actually land on) stayed sub-44px. Drop the shrink and floor the host box to
+ * 44x44, then re-pin the visible pill to its native size and center it so only the tap
+ * target grows, not the graphic. Track uses var() so it tracks any theme resize. */
+body.pf-mobile .dnd5e2 .window-header .mode-slider {
+  transform: none;
+  min-width: 44px;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+body.pf-mobile .dnd5e2 .window-header .mode-slider .slide-toggle-track {
+  width: var(--slide-toggle-width);
+  height: var(--slide-toggle-height);
+}
+
+/* Pill-card delete/config control. The details-tab background/species/class pills
+ * (.pill-lg, dnd5e.css:3671 — a 50px flex row) carry an inline-block <button.config-
+ * button> (dnd5e.css:6157-6161, width:unset -> shrink-wrapped to the ~11x15 "x" glyph)
+ * that in EDIT mode is the delete control (data-action="deleteDocument"); the edit-probe
+ * measured it at 11x15, the two sub-44 controls on the sheet. Center the glyph and floor
+ * the button box to 44x44: the transparent hit area spans nearly the full pill height and
+ * a full 44px column at the pill's right edge, while the pill's own 50px height and 280px
+ * max-width (dnd5e.css:3671-3681) absorb it with no reflow or 412px clip. */
+body.pf-mobile .dnd5e2.sheet.actor.character .pill-lg > button.config-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
+}
+
+/* ---------------------------------------------------------------- */
+/* 11. Damage-tray apply-damage touch pass (spec Feature C /          */
+/*    subtask 234-2). The dnd5e `damage-application` custom element   */
+/*    renders in LIGHT DOM — no shadow root (dnd5e.mjs:62850, frame   */
+/*    built at :62926-62950) — so plain CSS selectors reach every     */
+/*    control; no shadow-root patch (unlike sheet5e.js) is needed.    */
+/*    Section 7 above already floors every                            */
+/*    `:is(damage-application, effect-application)` button/label to    */
+/*    44px TALL; this section is the spec-named damage-tray pass — it  */
+/*    pins the three controls the criteria names into full >=44px tap  */
+/*    targets and keeps them unclipped in the mobile chat popout       */
+/*    (M2, which gets pf-max = width:100vw = 412px, pf-core.css:220).  */
+/*    DOM (dnd5e.mjs:62926-63010): damage-application > .card-tray     */
+/*    .damage-tray.collapsible > label (toggle) + .collapsible-content */
+/*    > .wrapper > [.targets .target > menu.damage-multipliers        */
+/*    button.multiplier-button] + button.apply-damage.                 */
+/* ---------------------------------------------------------------- */
+
+/* (a) Collapse/expand toggle = the tray's own <label> (built at
+ *     dnd5e.mjs:62931; base is a full-width flex row whose dotted
+ *     ::before/::after span the width, dnd5e.css:13885,13902). A
+ *     .damage-tray IS a .card-tray, so section 7's `.card-tray > label`
+ *     rule already floors this to 44px tall; pinned here too so the
+ *     damage-tray toggle stays a >=44px full-width tap strip and the
+ *     criterion traces to one explicit rule. */
+body.pf-mobile damage-application .card-tray.damage-tray > label {
+  min-height: 44px;
+}
+
+/* (b) Apply button (.wrapper > button.apply-damage[data-action="applyDamage"],
+ *     dnd5e.mjs:62939-62942; base width:calc(100% - 6px), dnd5e.css:14067 —
+ *     already full-width). Floor the height AND flex-center the icon+label so
+ *     the whole 44px box reads as one deliberate target rather than
+ *     baseline-aligned text. Both selector forms the spec names are covered. */
+body.pf-mobile damage-application button.apply-damage,
+body.pf-mobile damage-application button[data-action="applyDamage"] {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+}
+
+/* (c) Per-target multiplier buttons (menu.damage-multipliers >
+ *     button.multiplier-button, dnd5e.mjs:63004-63008). Their base grid is
+ *     `auto repeat(6, 1fr)` on a row that flex-wraps to full width
+ *     (flex:1 0 calc(100% - 6px), dnd5e.css:14028,13979) — so at a 412px
+ *     popout the six 1fr cells already resolve to >=44px WIDE. Here we floor
+ *     their HEIGHT and center the glyph + pressed-dot. Deliberately
+ *     height-only (NOT min-width): a hard 6-up min-width:44px row (>=264px +
+ *     gaps) could overflow and clip a narrow popout; the 1fr grid supplies the
+ *     width at 412px (probe-measured), so no horizontal clipping. */
+body.pf-mobile damage-application .damage-multipliers button.multiplier-button {
+  min-height: 44px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}

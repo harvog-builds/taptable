@@ -1,0 +1,23 @@
+{
+  "id": "taptable",
+  "title": "TapTable",
+  "description": "A mobile and touch usability layer for Foundry VTT: a phone shell with bottom navigation (Home, Board, Sheet, Roller, Chat, Combat, Macros, Mods, Settings), visual-viewport and on-screen-keyboard management, touch drag-and-drop, canvas touch gestures, and touch-friendly combat interaction (token HUD, targeting, multi-select, combatant carousel). The core is system-agnostic and degrades gracefully on any game system; a dnd5e reference adapter provides sheet, roll, and compendium integration. Zero desktop impact: every style and behavior is gated behind the body.pf-mobile flag. Not affiliated with or endorsed by Foundry Gaming LLC.",
+  "version": "0.1.0",
+  "compatibility": {
+    "minimum": "14",
+    "verified": "14"
+  },
+  "authors": [
+    {
+      "name": "Harvog"
+    }
+  ],
+  "esmodules": [
+    "scripts/main.js"
+  ],
+  "styles": [
+    "styles/pf-core.css",
+    "styles/pf-dnd5e.css"
+  ],
+  "license": "MIT"
+}

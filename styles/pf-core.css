@@ -1,0 +1,1215 @@
+/* taptable — core (system-agnostic) phone rules.
+ * EVERY selector in this file is scoped under body.pf-mobile: a desktop client
+ * (no pf-mobile class) matches nothing here — zero desktop impact by construction.
+ * This stylesheet is auto-imported into layer(modules), which out-cascades
+ * layer(system) and layer(applications) without !important (core layer order in
+ * /public/css/foundry2.css). */
+
+/* Any application window fits the visual viewport. Core's ApplicationV2
+ * _updatePosition() reads max-width/max-height from computed CSS, so this makes
+ * core itself size windows to the phone. --pf-vh is maintained by viewport.js
+ * (visualViewport -> 100dvh -> 100vh fallback chain). */
+body.pf-mobile .application:not(.minimized) {
+  max-width: 100vw;
+  max-height: var(--pf-vh, 100dvh);
+}
+
+/* mobile-drag-drop polyfill drag image (the polyfill appends a clone of the dragged
+ * element to <body>). Mirrors the polyfill's upstream default.css; !important is
+ * required to beat the clone's copied inline styles. */
+body.pf-mobile .dnd-poly-drag-image {
+  opacity: 0.65 !important;
+}
+body.pf-mobile .dnd-poly-drag-image.dnd-poly-snapback {
+  transition-property: transform, -webkit-transform !important;
+  transition-duration: 250ms !important;
+  transition-timing-function: ease-out !important;
+}
+
+/* ============================================= */
+/*  M2 — PocketShell bottom nav + panes          */
+/* ============================================= */
+
+body.pf-mobile {
+  --pf-nav-height: 56px;
+}
+
+/* The shell element is a full-viewport overlay that passes events through
+ * (pointer-events none); only its nav and panes catch input. Height tracks the
+ * VISUAL viewport via --pf-vh so the nav sits above the URL bar, not under it.
+ * z-index: core windows live at --z-index-window (100) and increment per
+ * bringToFront; tooltip is 9999 and notifications 99999 (foundry2.css:312-319),
+ * so tooltip-1 stacks the nav above every application window while keeping
+ * notifications and tooltips readable above the shell. */
+body.pf-mobile #pf-shell {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: var(--pf-vh, 100dvh);
+  z-index: calc(var(--z-index-tooltip, 9999) - 1);
+  pointer-events: none;
+}
+
+/* On-screen keyboard open (body.pf-keyboard, viewport.js): hide the NAV so it
+ * never floats mid-screen above the keyboard — but NOT the whole shell (as M2
+ * did), because the focused input may live inside a shell pane (the GM Home
+ * search box): hiding the shell would blur that input, close the keyboard and
+ * loop. With no pane open the nav is the shell's only visible content (the
+ * overlay itself is pointer-events:none), so this preserves M2 behavior. */
+body.pf-mobile.pf-keyboard #pf-shell .pf-nav {
+  display: none;
+}
+
+body.pf-mobile #pf-shell .pf-nav {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: var(--pf-nav-height);
+  display: flex;
+  align-items: stretch;
+  pointer-events: auto;
+  background: var(--color-cool-5, #11141d);
+  border-top: 1px solid var(--color-cool-4, #47495e);
+}
+
+/* Tap targets: the nav is 56px tall and each tab stretches to fill it; min sizes
+ * keep every target >= 44px even with many registered tabs. */
+body.pf-mobile #pf-shell .pf-tab {
+  flex: 1 1 0;
+  min-width: 44px;
+  min-height: 44px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  margin: 0;
+  padding: 2px 0;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  color: var(--color-text-secondary, #c2c7cc);
+  font-size: var(--font-size-11, 0.6875rem);
+  line-height: 1;
+}
+body.pf-mobile #pf-shell .pf-tab i {
+  font-size: var(--font-size-18, 1.125rem);
+}
+body.pf-mobile #pf-shell .pf-tab.active {
+  color: var(--color-text-emphatic, #fff);
+  background: var(--color-cool-4, #47495e);
+}
+
+/* ============================================= */
+/*  M3 — sheet-mode nav                          */
+/* ============================================= */
+
+/* While a maximized dnd5e actor sheet is the topmost open window, #buildNav
+ * renders the sheet's tab list + Close instead of the regular tabs (shell.js
+ * #buildSheetNav). Up to 9 buttons can appear (8 character-sheet tabs + Close):
+ * every target keeps the >=44px floor from .pf-tab above, and the nav scrolls
+ * horizontally rather than shrinking targets below it. */
+body.pf-mobile #pf-shell .pf-nav.pf-sheet-nav {
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+body.pf-mobile #pf-shell .pf-sheet-nav .pf-tab {
+  flex: 1 0 44px;
+}
+/* dnd5e-icon tabs (e.g. Inventory's backpack.svg) size via the element's own
+ * --icon-size/--icon-fill custom properties (IconElement static CSS). */
+body.pf-mobile #pf-shell .pf-sheet-nav .pf-tab dnd5e-icon {
+  --icon-size: 18px;
+  --icon-fill: currentColor;
+}
+body.pf-mobile #pf-shell .pf-sheet-nav .pf-sheet-close {
+  color: var(--color-warm-2, #ee9b3a);
+}
+/* 231-2 — "+ Add" control in the sheet-mode nav: opens the Compendium Add picker
+ * for the topmost OWN, editable dnd5e sheet. Inherits the .pf-sheet-nav .pf-tab
+ * >=44px floor above; the accent marks it apart from the tab buttons and Close. */
+body.pf-mobile #pf-shell .pf-sheet-nav .pf-sheet-add {
+  color: var(--color-warm-3, #f9c22e);
+}
+
+/* Shell-owned panes (Home, Settings) fill the space above the nav. */
+body.pf-mobile #pf-shell .pf-pane {
+  position: absolute;
+  inset: 0 0 var(--pf-nav-height) 0;
+  overflow: hidden auto;
+  pointer-events: auto;
+  padding: 0.75rem 1rem calc(0.75rem + env(safe-area-inset-bottom, 0px));
+  background: var(--color-cool-5, #11141d);
+  color: var(--color-text-primary, #c2c7cc);
+}
+body.pf-mobile #pf-shell .pf-pane-title {
+  border: none;
+  margin: 0 0 0.5rem;
+}
+body.pf-mobile #pf-shell .pf-section-title {
+  border: none;
+  margin: 1rem 0 0.25rem;
+}
+body.pf-mobile #pf-shell .pf-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 44px;
+}
+body.pf-mobile #pf-shell .pf-row-label {
+  flex: 1;
+}
+body.pf-mobile #pf-shell .pf-row select,
+body.pf-mobile #pf-shell .pf-row input[type="checkbox"] {
+  min-height: 44px;
+  min-width: 44px;
+}
+body.pf-mobile #pf-shell .pf-btn {
+  min-width: 44px;
+  min-height: 44px;
+  width: auto;
+  flex: 0 0 auto;
+  font-size: var(--font-size-16, 1rem);
+}
+body.pf-mobile #pf-shell .pf-btn.pf-wide {
+  flex: 1 1 auto;
+}
+body.pf-mobile #pf-shell .pf-hp-value {
+  min-width: 7ch;
+  text-align: center;
+}
+body.pf-mobile #pf-shell .pf-hint,
+body.pf-mobile #pf-shell .pf-empty {
+  color: var(--color-text-subtle, #7a7971);
+  font-size: var(--font-size-12, 0.75rem);
+}
+body.pf-mobile #pf-shell .pf-favorites {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+body.pf-mobile #pf-shell .pf-favorite {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 44px;
+  justify-content: flex-start;
+  text-align: left;
+}
+body.pf-mobile #pf-shell .pf-favorite img {
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  border: none;
+  object-fit: cover;
+}
+
+/* ============================================= */
+/*  M2 — pf-max fullscreen windows               */
+/* ============================================= */
+
+/* Applications opened THROUGH the shell get pf-max (shell.js maximizeApp) and
+ * become effectively fullscreen above the nav. !important is required because
+ * positioned AppV2 windows carry inline left/top/width/height from
+ * _updatePosition(); windows not opened via the shell (DialogV2 confirms etc.)
+ * never receive this class. */
+body.pf-mobile .application.pf-max {
+  inset: 0 !important;
+  width: 100vw !important;
+  height: calc(var(--pf-vh, 100dvh) - var(--pf-nav-height, 56px)) !important;
+  max-width: 100vw !important;
+  max-height: none !important;
+  transform: none !important;
+}
+
+/* 233-1: legacy v1 FormApplication windows carry `.app window-app`, NOT `.application`
+ * (templates/app-window.html), so the rule above misses them. A shell-opened v1 setting
+ * menu (e.g. lib-wrapper.menu) gets the SAME fullscreen treatment here; min-width:0 also
+ * neutralizes a v1 app's option-driven width floor so it fits the phone. Declarations
+ * mirror .application.pf-max so both window kinds behave identically. */
+body.pf-mobile .app.pf-max {
+  inset: 0 !important;
+  width: 100vw !important;
+  height: calc(var(--pf-vh, 100dvh) - var(--pf-nav-height, 56px)) !important;
+  min-width: 0 !important;
+  max-width: 100vw !important;
+  max-height: none !important;
+  transform: none !important;
+}
+
+/* ============================================= */
+/*  M2 — core desktop chrome hidden on phones    */
+/* ============================================= */
+
+/* The sidebar expand-teleport dead-end (M0 round 6) is removed by construction:
+ * the core sidebar (#ui-right / #sidebar) is not visible under pf-mobile — chat
+ * lives in the Chat tab's popout instead. #notifications is untouched: core
+ * prepends it directly to <body> (notifications.mjs:77-80), outside every
+ * container hidden here. */
+body.pf-mobile #ui-left,
+body.pf-mobile #scene-navigation,
+body.pf-mobile #hotbar,
+body.pf-mobile #ui-right,
+body.pf-mobile #sidebar {
+  display: none !important;
+}
+
+/* ============================================= */
+/*  M2.1 — Board tab                             */
+/* ============================================= */
+
+/* Board mode (shell.js toggleBoard adds body.pf-board): shell-opened fullscreen
+ * windows are hidden — NOT closed — so the canvas underneath is visible and
+ * touch-interactive; their state survives and any other tab re-opens them
+ * normally. !important mirrors the pf-max rule it overrides. */
+body.pf-mobile.pf-board .application.pf-max,
+body.pf-mobile.pf-board .app.pf-max {
+  display: none !important;
+}
+
+/* ============================================= */
+/*  M5 — canvas gesture layer                    */
+/* ============================================= */
+
+/* touch-action:none on the canvas so the browser never claims (scrolls/zooms) the
+ * touch stream mid-gesture — core has no touch-action anywhere, so pointermove
+ * events can otherwise be stolen. scripts/canvas-touch.js owns the gestures on top
+ * of this. Scoped to body.pf-mobile #board — zero desktop impact. */
+body.pf-mobile #board {
+  touch-action: none;
+}
+
+/* ============================================= */
+/*  M2.1 — GM Home pane (actor list)             */
+/* ============================================= */
+
+body.pf-mobile #pf-shell .pf-gm-search {
+  width: 100%;
+  min-height: 44px;
+  margin: 0 0 0.5rem;
+  font-size: var(--font-size-16, 1rem);
+}
+body.pf-mobile #pf-shell .pf-gm-actors {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+body.pf-mobile #pf-shell .pf-gm-row {
+  display: flex;
+  align-items: stretch;
+  gap: 0.25rem;
+}
+body.pf-mobile #pf-shell .pf-gm-open {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0.5rem;
+  min-height: 44px;
+  min-width: 0;
+  text-align: left;
+}
+body.pf-mobile #pf-shell .pf-gm-open img {
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  border: none;
+  object-fit: cover;
+}
+body.pf-mobile #pf-shell .pf-gm-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+body.pf-mobile #pf-shell .pf-gm-place {
+  flex: 0 0 44px;
+  min-width: 44px;
+  min-height: 44px;
+}
+body.pf-mobile #pf-shell .pf-gm-place:disabled {
+  opacity: 0.4;
+}
+
+/* ============================================= */
+/*  230-1 — GM Home control header               */
+/* ============================================= */
+
+/* Persistent pause + Scenes controls at the top of the GM Home pane so the GM's
+ * pause/scene controls stay reachable even when the top strip is not shown
+ * (game unpaused AND off the Board surface). The buttons reuse the .pf-strip-btn /
+ * .pf-pause-toggle markup + the shipped pfPauseToggle / pfScenes actions, so they
+ * inherit the strip's >=44px tap floor and the paused-orange colour rule; this
+ * block only lays the header row out and separates it from the actor list below. */
+body.pf-mobile #pf-shell .pf-gm-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0 0 0.5rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--color-cool-4, #47495e);
+}
+body.pf-mobile #pf-shell .pf-gm-controls .pf-strip-btn {
+  min-width: 44px;
+  min-height: 44px;
+}
+
+/* ============================================= */
+/*  M2.2 — top strip (pause + scene controls)    */
+/* ============================================= */
+
+/* The strip renders on the Board surface for everyone, and for ALL users while
+ * the game is paused (core's #pause banner is body-mounted but sits at z-index
+ * canvas+1 — foundry2.css:8227-8241 — i.e. UNDER fullscreen pf-max windows, so
+ * on phones the strip is the reliable pause indicator). */
+body.pf-mobile {
+  --pf-strip-height: 48px;
+}
+body.pf-mobile #pf-shell .pf-strip {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  min-height: calc(var(--pf-strip-height) + env(safe-area-inset-top, 0px));
+  padding: calc(2px + env(safe-area-inset-top, 0px)) 0.5rem 2px;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  pointer-events: auto;
+  background: var(--color-cool-5, #11141d);
+  border-bottom: 1px solid var(--color-cool-4, #47495e);
+  color: var(--color-text-primary, #c2c7cc);
+}
+body.pf-mobile #pf-shell .pf-strip-spacer {
+  flex: 1 1 auto;
+}
+body.pf-mobile #pf-shell .pf-strip-btn {
+  flex: 0 1 auto;
+  min-width: 44px;
+  min-height: 44px;
+  width: auto;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0 0.75rem;
+  font-size: var(--font-size-13, 0.8125rem);
+}
+body.pf-mobile #pf-shell .pf-strip-btn.active {
+  color: var(--color-text-emphatic, #fff);
+  background: var(--color-cool-4, #47495e);
+}
+body.pf-mobile #pf-shell .pf-pause-toggle.paused,
+body.pf-mobile #pf-shell .pf-pause-state.paused {
+  color: var(--color-warm-2, #ee9b3a);
+}
+body.pf-mobile #pf-shell .pf-pause-state {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 44px;
+  padding: 0 0.5rem;
+  font-size: var(--font-size-13, 0.8125rem);
+}
+/* Panes rendered together with the strip start below it (sibling order is
+ * guaranteed by _renderHTML: strip first, pane second). */
+body.pf-mobile #pf-shell .pf-strip ~ .pf-pane {
+  top: calc(var(--pf-strip-height) + env(safe-area-inset-top, 0px));
+}
+/* While paused, fullscreen shell windows shift below the strip so window headers
+ * (close buttons etc.) stay reachable under the always-visible pause strip.
+ * !important mirrors the pf-max rule this overrides. */
+body.pf-mobile.pf-paused .application.pf-max,
+body.pf-mobile.pf-paused .app.pf-max {
+  top: calc(var(--pf-strip-height) + env(safe-area-inset-top, 0px)) !important;
+  height: calc(var(--pf-vh, 100dvh) - var(--pf-nav-height, 56px) - var(--pf-strip-height) - env(safe-area-inset-top, 0px)) !important;
+}
+
+/* ============================================= */
+/*  M2.2 — Scenes pane (GM scene browser)        */
+/* ============================================= */
+
+body.pf-mobile #pf-shell .pf-scenes {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin-top: 0.5rem;
+}
+body.pf-mobile #pf-shell .pf-scene-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 44px;
+  justify-content: flex-start;
+  text-align: left;
+}
+body.pf-mobile #pf-shell .pf-scene-row.viewed {
+  color: var(--color-text-emphatic, #fff);
+}
+body.pf-mobile #pf-shell .pf-scene-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+body.pf-mobile #pf-shell .pf-scene-badge {
+  flex: 0 0 auto;
+  font-size: var(--font-size-11, 0.6875rem);
+  border: 1px solid currentColor;
+  border-radius: 3px;
+  padding: 1px 4px;
+  line-height: 1.2;
+}
+body.pf-mobile #pf-shell .pf-scene-badge.pf-viewed {
+  color: var(--color-text-emphatic, #fff);
+}
+body.pf-mobile #pf-shell .pf-scene-badge.pf-active {
+  color: var(--color-warm-2, #ee9b3a);
+}
+
+/* 231-2 — GM-only Scene Activate control per row. Scene#activate is a world write
+ * (sets the active scene for everyone), so the button only fires behind a DialogV2
+ * confirm and is rendered for GMs only. It sits alongside the client-local view
+ * row (the row wrapper turns the row into a flex pair, exactly like the GM Home
+ * open+place rows). The activate button keeps a >=44px tap target; its label
+ * stacks under the icon like the bottom-nav tabs. */
+body.pf-mobile #pf-shell .pf-scene-item {
+  display: flex;
+  align-items: stretch;
+  gap: 0.25rem;
+}
+body.pf-mobile #pf-shell .pf-scene-item .pf-scene-row {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+body.pf-mobile #pf-shell .pf-scene-activate {
+  flex: 0 0 auto;
+  min-width: 44px;
+  min-height: 44px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 2px 8px;
+  font-size: var(--font-size-11, 0.6875rem);
+  line-height: 1;
+  color: var(--color-warm-2, #ee9b3a);
+}
+body.pf-mobile #pf-shell .pf-scene-activate:disabled {
+  opacity: 0.4;
+  color: var(--color-text-secondary, #c2c7cc);
+}
+
+/* ============================================= */
+/*  M2.2 — Mods pane (module entries)            */
+/* ============================================= */
+
+body.pf-mobile #pf-shell .pf-mods {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+body.pf-mobile #pf-shell .pf-mod-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-height: 44px;
+  justify-content: flex-start;
+  text-align: left;
+}
+body.pf-mobile #pf-shell .pf-mod-row i {
+  flex: 0 0 24px;
+  text-align: center;
+  font-size: var(--font-size-18, 1.125rem);
+}
+body.pf-mobile #pf-shell .pf-mod-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+body.pf-mobile #pf-shell .pf-mod-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+body.pf-mobile #pf-shell .pf-mod-hint {
+  color: var(--color-text-subtle, #7a7971);
+  font-size: var(--font-size-12, 0.75rem);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ============================================= */
+/*  M2 — combat popout augmentation              */
+/* ============================================= */
+
+body.pf-mobile .pf-combat-empty {
+  list-style: none;
+  padding: 1rem;
+  text-align: center;
+  color: var(--color-text-subtle, #7a7971);
+}
+body.pf-mobile button.pf-target {
+  min-width: 44px;
+  min-height: 44px;
+}
+body.pf-mobile .pf-combat-strip {
+  flex: 0 0 auto;
+  padding: 0.25rem 0.5rem;
+}
+body.pf-mobile .pf-combat-strip .pf-end-turn {
+  width: 100%;
+  min-height: 44px;
+}
+
+/* ============================================= */
+/*  M3.1 — Quick Roll pane (Roller tab)          */
+/* ============================================= */
+
+/* The Roller tab brings the nav to 8 tabs for a player with a character. Each
+ * .pf-tab keeps its 44px min floor, so below ~352px total width the bar must
+ * scroll horizontally (like the sheet-mode nav) rather than shrink targets
+ * under 44px; at the 412px reference width 8 tabs are ~51px each, no scroll. */
+body.pf-mobile #pf-shell .pf-nav {
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+/* Die picker: 7 dice as wrapping >=44px buttons. */
+body.pf-mobile #pf-shell .pf-dice {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  margin: 0 0 0.25rem;
+}
+body.pf-mobile #pf-shell .pf-die {
+  flex: 1 1 calc(25% - 0.25rem);
+  min-width: 44px;
+  min-height: 44px;
+  width: auto;
+  margin: 0;
+}
+body.pf-mobile #pf-shell .pf-die.active,
+body.pf-mobile #pf-shell .pf-adv.active {
+  color: var(--color-text-emphatic, #fff);
+  background: var(--color-cool-4, #47495e);
+}
+
+/* Advantage / Normal / Disadvantage segmented selector. */
+body.pf-mobile #pf-shell .pf-adv-group {
+  display: flex;
+  gap: 0.25rem;
+  margin: 0.25rem 0;
+}
+body.pf-mobile #pf-shell .pf-adv {
+  flex: 1 1 0;
+  min-width: 44px;
+  min-height: 44px;
+  width: auto;
+  margin: 0;
+  font-size: var(--font-size-12, 0.75rem);
+}
+
+/* Stepper value (count / modifier). Steppers reuse .pf-row/.pf-btn (44px floors). */
+body.pf-mobile #pf-shell .pf-roller-value {
+  min-width: 5ch;
+  text-align: center;
+}
+
+/* Identity row: avatar + name of the actor the automated rolls target. */
+body.pf-mobile #pf-shell .pf-roller-identity {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 44px;
+  margin-top: 0.5rem;
+}
+body.pf-mobile #pf-shell .pf-roller-identity img {
+  width: 36px;
+  height: 36px;
+  flex: 0 0 36px;
+  border: none;
+  object-fit: cover;
+  border-radius: 4px;
+}
+body.pf-mobile #pf-shell .pf-roller-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: bold;
+}
+
+/* Automated roll grids: abilities/saves 3-up, skills 2-up; every button >=44px. */
+body.pf-mobile #pf-shell .pf-roller-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.25rem;
+}
+body.pf-mobile #pf-shell .pf-roller-grid.pf-roller-skills {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+body.pf-mobile #pf-shell .pf-roller-roll {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.25rem;
+  min-width: 44px;
+  min-height: 44px;
+  width: auto;
+  margin: 0;
+  padding: 0 0.5rem;
+}
+body.pf-mobile #pf-shell .pf-roller-roll .pf-roller-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}
+body.pf-mobile #pf-shell .pf-roller-roll .pf-roller-mod {
+  flex: 0 0 auto;
+  font-weight: bold;
+}
+
+/* GM actor rows (search input + list container reuse .pf-gm-search/.pf-gm-actors). */
+body.pf-mobile #pf-shell .pf-roller-pick {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0.5rem;
+  min-height: 44px;
+  min-width: 0;
+  text-align: left;
+}
+body.pf-mobile #pf-shell .pf-roller-pick img {
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  border: none;
+  object-fit: cover;
+}
+body.pf-mobile #pf-shell .pf-roller-pick.selected {
+  color: var(--color-text-emphatic, #fff);
+  background: var(--color-cool-4, #47495e);
+}
+
+/* ============================================= */
+/*  231-1 — Compendium Add picker                */
+/* ============================================= */
+
+/* A STANDALONE overlay (not a #pf-shell pane): openCompendiumPicker() appends
+ * #pf-compendium directly to <body>. It sits one step below the tooltip layer
+ * (so ui.notifications errors, z 99999, stay readable above it) and above the
+ * pf-max sheet windows it adds to, and dims the screen behind its panel. */
+body.pf-mobile #pf-compendium {
+  position: fixed;
+  inset: 0;
+  z-index: calc(var(--z-index-tooltip, 9999) - 1);
+  pointer-events: auto;
+  display: flex;
+  background: rgba(0, 0, 0, 0.5);
+}
+body.pf-mobile #pf-compendium .pf-compendium-panel {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 0.75rem 1rem calc(0.75rem + env(safe-area-inset-bottom, 0px));
+  background: var(--color-cool-5, #11141d);
+  color: var(--color-text-primary, #c2c7cc);
+  overflow: hidden;
+}
+body.pf-mobile #pf-compendium .pf-compendium-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0 0 0.5rem;
+}
+body.pf-mobile #pf-compendium .pf-pane-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  border: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+body.pf-mobile #pf-compendium .pf-compendium-close {
+  flex: 0 0 auto;
+  min-width: 44px;
+  min-height: 44px;
+  width: auto;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0 0.75rem;
+}
+body.pf-mobile #pf-compendium .pf-compendium-cats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  margin: 0 0 0.5rem;
+}
+body.pf-mobile #pf-compendium .pf-compendium-cat {
+  flex: 1 1 auto;
+  min-width: 44px;
+  min-height: 44px;
+  width: auto;
+  margin: 0;
+  font-size: var(--font-size-12, 0.75rem);
+}
+body.pf-mobile #pf-compendium .pf-compendium-cat.active {
+  color: var(--color-text-emphatic, #fff);
+  background: var(--color-cool-4, #47495e);
+}
+body.pf-mobile #pf-compendium .pf-compendium-search {
+  width: 100%;
+  min-height: 44px;
+  margin: 0 0 0.5rem;
+  font-size: var(--font-size-16, 1rem);
+}
+body.pf-mobile #pf-compendium .pf-compendium-results {
+  flex: 1 1 auto;
+  overflow: hidden auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+body.pf-mobile #pf-compendium .pf-compendium-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 44px;
+  justify-content: flex-start;
+  text-align: left;
+}
+body.pf-mobile #pf-compendium .pf-compendium-img {
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+  border: none;
+  object-fit: cover;
+}
+body.pf-mobile #pf-compendium .pf-compendium-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+body.pf-mobile #pf-compendium .pf-compendium-pack {
+  flex: 0 0 auto;
+  max-width: 40%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--font-size-11, 0.6875rem);
+  color: var(--color-text-subtle, #7a7971);
+}
+body.pf-mobile #pf-compendium .pf-compendium-hint,
+body.pf-mobile #pf-compendium .pf-compendium-empty {
+  color: var(--color-text-subtle, #7a7971);
+  font-size: var(--font-size-12, 0.75rem);
+}
+
+/* ============================================= */
+/*  233-1 — GM Configuration section (Settings)  */
+/* ============================================= */
+
+/* The GM-only Configuration rows in the Settings pane (shell.js
+ * #buildConfigSection): each setting menu is a >=44px icon + label row, mirroring
+ * the Mods pane rows (.pf-mod-row). The Configure Settings button reuses .pf-btn
+ * .pf-wide, so it is already covered by the existing >=44px button floor. */
+body.pf-mobile #pf-shell .pf-config-menus {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin-top: 0.25rem;
+}
+body.pf-mobile #pf-shell .pf-config-menu {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-height: 44px;
+  justify-content: flex-start;
+  text-align: left;
+}
+body.pf-mobile #pf-shell .pf-config-menu i {
+  flex: 0 0 24px;
+  text-align: center;
+  font-size: var(--font-size-18, 1.125rem);
+}
+body.pf-mobile #pf-shell .pf-config-menu-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ============================================= */
+/*  233-1 — core SettingsConfig at phone width   */
+/* ============================================= */
+
+/* The GM opens core SettingsConfig through the shell, so it is pf-max (full-width,
+ * fullscreen above the nav). Its CategoryBrowser two-pane content-row
+ * (.window-content: flex-direction row with a 220px-fixed <aside> category list +
+ * a .main content pane, foundry2.css:7020-7066) squeezes the settings content to
+ * ~130px at 412px and clips form fields horizontally. Restack the two panes into a
+ * single column: the category list sits on top (capped + scrollable) and the
+ * settings content takes the rest. pf-core.css is in layer(modules), which
+ * out-cascades core's layer(applications) (foundry2.css:5 layer order), so these
+ * overrides need NO !important. */
+body.pf-mobile #settings-config .window-content {
+  flex-direction: column;
+  gap: 0;
+}
+/* Category list: full width, height-capped with its own scroll so the content pane
+ * below always stays reachable; a bottom separator replaces the row layout's right
+ * border/margin/padding. */
+body.pf-mobile #settings-config aside {
+  flex: 0 0 auto;
+  max-height: 35vh;
+  overflow-y: auto;
+  margin: 0 0 0.5rem;
+  padding: 0 0 0.5rem;
+  border-right: none;
+  border-bottom: var(--sidebar-separator, 1px solid rgba(0, 0, 0, 0.5));
+}
+/* Category rows and the category search are >=44px tap targets. */
+body.pf-mobile #settings-config aside nav.tabs > button {
+  min-height: 44px;
+}
+body.pf-mobile #settings-config aside input[type="search"] {
+  min-height: 44px;
+}
+/* Settings content fills the remaining height and scrolls internally. */
+body.pf-mobile #settings-config .main {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+/* Each setting stacks its label above full-width fields, so nothing clips off the
+ * right edge at 412px. */
+body.pf-mobile #settings-config .form-group {
+  flex-direction: column;
+  align-items: stretch;
+  min-height: 44px;
+}
+body.pf-mobile #settings-config .form-group > label,
+body.pf-mobile #settings-config .form-group > span.label {
+  flex: none;
+}
+/* Inputs, selects and buttons (menu-open buttons, the Save footer button) are
+ * >=44px and may shrink to the column width without overflowing. Checkboxes and
+ * radios keep their intrinsic box (their >=44px row height comes from .form-group). */
+body.pf-mobile #settings-config .form-group input:not([type="checkbox"]):not([type="radio"]),
+body.pf-mobile #settings-config .form-group select,
+body.pf-mobile #settings-config .form-group button,
+body.pf-mobile #settings-config .form-fields > button,
+body.pf-mobile #settings-config .main footer.form-footer button {
+  min-height: 44px;
+  min-width: 0;
+}
+
+/* ============================================= */
+/*  234-1 — Board strip combat controls          */
+/* ============================================= */
+
+/* Token HUD / Target-mode / Multi-Select controls added to the Board top strip
+ * (shell.js #buildCombatControls). They reuse .pf-strip-btn (>=44px; the .active
+ * background — from the existing .pf-strip-btn.active rule — is the toggle indicator
+ * for Target and Multi-Select). Allow the strip to WRAP so the group drops to a
+ * second row on a narrow phone rather than clipping the pause/scene controls. */
+body.pf-mobile #pf-shell .pf-strip {
+  flex-wrap: wrap;
+  row-gap: 0.25rem;
+}
+body.pf-mobile #pf-shell .pf-strip-combat {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  flex: 0 1 auto;
+}
+/* Icon-only buttons: tighten the horizontal padding so three fit comfortably. */
+body.pf-mobile #pf-shell .pf-strip-combat .pf-strip-btn {
+  padding: 0 0.5rem;
+}
+
+/* ============================================= */
+/*  234-1 — Token HUD: finger + zoom-stable       */
+/* ============================================= */
+
+/* The Token HUD renders into #hud, which core scales to the canvas zoom
+ * (container.mjs:98 transform:scale(canvas.stage.scale.x)) — so a fixed 44px HUD tap
+ * target shrinks below 44 physical px when zoomed out. canvas-touch.js maintains
+ * --pf-canvas-scale = canvas.stage.scale.x (canvasPan + canvasReady, pf-mobile only);
+ * the counter-transform scale(1 / --pf-canvas-scale) holds these targets at a constant
+ * PHYSICAL size, and the >=44px base lands them >=44 physical px after it. Covers the
+ * status-effect icons, the palette toggle(s) and every HUD .control-icon (target,
+ * config, combat, …) so the whole HUD is finger-usable. Fine sizing at a couple of zoom
+ * levels is PENDING USER on-device (spec Risk 1). */
+body.pf-mobile .palette.status-effects img.effect-control,
+body.pf-mobile #token-hud [data-action="togglePalette"],
+body.pf-mobile #token-hud .control-icon {
+  transform: scale(calc(1 / var(--pf-canvas-scale, 1)));
+  transform-origin: center;
+  min-width: 44px;
+  min-height: 44px;
+  width: 44px;
+  height: 44px;
+}
+/* Status-effect palette laid out as a finger-friendly grid, capped in height so it
+ * stays on-screen (scrolls internally) when a system defines many status effects. */
+body.pf-mobile #token-hud .palette.status-effects {
+  display: grid;
+  grid-template-columns: repeat(4, 44px);
+  gap: 4px;
+  max-height: 60vh;
+  overflow: auto;
+}
+
+/* ============================================= */
+/*  235-1 — AoE MeasuredTemplate tap-to-place     */
+/* ============================================= */
+
+/* The tap-to-place control overlay (templates.js builds #pf-template-overlay on the body
+ * while a template is being placed). Fixed above the canvas, clear of the shell nav; a
+ * separate DOM subtree from #board, so it never interferes with canvas gestures. Stacked
+ * just under tooltips/notifications (same rung as the shell nav, foundry2.css:312-319). */
+body.pf-mobile #pf-template-overlay {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(var(--pf-nav-height, 56px) + env(safe-area-inset-bottom, 0px) + 12px);
+  z-index: calc(var(--z-index-tooltip, 9999) - 1);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px;
+  border-radius: 10px;
+  background: var(--color-cool-5, #11141d);
+  border: 1px solid var(--color-cool-4, #47495e);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.5);
+}
+/* Each control row: buttons laid out for fingers. */
+body.pf-mobile #pf-template-overlay .pf-tpl-row {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+}
+/* Every control >=44px so it is finger-usable. */
+body.pf-mobile #pf-template-overlay .pf-tpl-btn {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 12px;
+  font-size: 20px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  border: 1px solid var(--color-cool-4, #47495e);
+  background: var(--color-cool-4, #2a2d3d);
+  color: var(--color-text-light-highlight, #f0f0e0);
+}
+/* Confirm/Cancel are wider text buttons; colour-code the destructive vs commit action. */
+body.pf-mobile #pf-template-overlay .pf-tpl-confirm {
+  flex: 1 1 auto;
+  font-size: 16px;
+  background: var(--color-level-success-bg, #1b5e20);
+  border-color: var(--color-level-success-border, #2e7d32);
+}
+body.pf-mobile #pf-template-overlay .pf-tpl-cancel {
+  flex: 1 1 auto;
+  font-size: 16px;
+  background: var(--color-level-error-bg, #5e1b1b);
+  border-color: var(--color-level-error-border, #7d2e2e);
+}
+
+/* ============================================= */
+/*  236-1 — Combatant carousel (Board overlay)   */
+/* ============================================= */
+
+/* The combatant carousel (shell.js #buildCombatCarousel) is a Board overlay: a
+ * horizontal, turn-ordered strip of the active combat's combatants that sits just
+ * above the bottom nav while board mode is active. It is a #pf-shell child, and the
+ * overlay itself is pointer-events:none, so it only catches input where it paints —
+ * hence pointer-events:auto here. It is rendered ONLY with an active combat, so a
+ * desktop client (no pf-mobile) and any phone without a combat show nothing. */
+body.pf-mobile #pf-shell .pf-combat-carousel {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: var(--pf-nav-height);
+  display: flex;
+  align-items: stretch;
+  gap: 0.25rem;
+  padding: 0.25rem calc(0.25rem + env(safe-area-inset-right, 0px)) 0.25rem calc(0.25rem + env(safe-area-inset-left, 0px));
+  pointer-events: auto;
+  background: var(--color-cool-5, #11141d);
+  border-top: 1px solid var(--color-cool-4, #47495e);
+}
+
+/* The scrollable turn-order track flexes to fill the width between the roll and End
+ * Turn controls; it scrolls horizontally when there are more combatants than fit. */
+body.pf-mobile #pf-shell .pf-carousel-track {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: stretch;
+  gap: 0.25rem;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+/* Each combatant is a >=44px tap-to-focus target: avatar + name + initiative. */
+body.pf-mobile #pf-shell .pf-combatant {
+  flex: 0 0 auto;
+  min-width: 44px;
+  min-height: 44px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  margin: 0;
+  padding: 2px 4px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--color-text-secondary, #c2c7cc);
+  font-size: var(--font-size-11, 0.6875rem);
+  line-height: 1;
+}
+body.pf-mobile #pf-shell .pf-combatant .pf-combatant-img {
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  border: none;
+  border-radius: 4px;
+  object-fit: cover;
+}
+body.pf-mobile #pf-shell .pf-combatant .pf-combatant-name {
+  max-width: 8ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+body.pf-mobile #pf-shell .pf-combatant .pf-combatant-init {
+  font-weight: bold;
+  color: var(--color-text-primary, #f0f0e0);
+}
+
+/* Current-turn combatant: emphatic outline + fill (combat.combatant). */
+body.pf-mobile #pf-shell .pf-combatant.current {
+  border-color: var(--color-warm-2, #ee9b3a);
+  color: var(--color-text-emphatic, #fff);
+  background: var(--color-cool-4, #47495e);
+}
+/* Defeated combatant: dimmed with a struck-through name (combatant.isDefeated). */
+body.pf-mobile #pf-shell .pf-combatant.defeated {
+  opacity: 0.45;
+}
+body.pf-mobile #pf-shell .pf-combatant.defeated .pf-combatant-name {
+  text-decoration: line-through;
+}
+
+/* Roll-initiative + End Turn controls flank the track; both are >=44px. End Turn is
+ * disabled (dimmed) unless this user owns the current combatant. */
+body.pf-mobile #pf-shell .pf-carousel-roll,
+body.pf-mobile #pf-shell .pf-carousel-end {
+  flex: 0 0 auto;
+  min-width: 44px;
+  min-height: 44px;
+  width: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  margin: 0;
+  padding: 2px 8px;
+  font-size: var(--font-size-11, 0.6875rem);
+  line-height: 1;
+}
+body.pf-mobile #pf-shell .pf-carousel-roll {
+  color: var(--color-warm-3, #f9c22e);
+}
+body.pf-mobile #pf-shell .pf-carousel-end {
+  color: var(--color-warm-2, #ee9b3a);
+}
+body.pf-mobile #pf-shell .pf-carousel-end:disabled {
+  opacity: 0.4;
+  color: var(--color-text-secondary, #c2c7cc);
+}
+
+/* ============================================= */
+/*  236-2 — Macro hotbar drawer (Macros pane)    */
+/* ============================================= */
+
+/* The Macros pane (shell.js #buildMacrosPane) lists the user's hotbar macros as
+ * >=44px tap-to-run rows (icon + name + slot badge), with a page-navigation row when
+ * more than one hotbar page holds macros. Every selector is scoped under
+ * body.pf-mobile #pf-shell, so a desktop client (no pf-mobile) matches nothing. */
+body.pf-mobile #pf-shell .pf-macro-pagenav {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0 0 0.5rem;
+}
+body.pf-mobile #pf-shell .pf-macro-page-prev,
+body.pf-mobile #pf-shell .pf-macro-page-next {
+  flex: 0 0 auto;
+  min-width: 44px;
+  min-height: 44px;
+  width: auto;
+}
+body.pf-mobile #pf-shell .pf-macro-page-prev:disabled,
+body.pf-mobile #pf-shell .pf-macro-page-next:disabled {
+  opacity: 0.4;
+}
+body.pf-mobile #pf-shell .pf-macro-page-label {
+  flex: 1 1 auto;
+  text-align: center;
+  font-weight: bold;
+}
+body.pf-mobile #pf-shell .pf-macros {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+body.pf-mobile #pf-shell .pf-macro-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 44px;
+  justify-content: flex-start;
+  text-align: left;
+}
+body.pf-mobile #pf-shell .pf-macro-img {
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  border: none;
+  border-radius: 4px;
+  object-fit: cover;
+}
+body.pf-mobile #pf-shell .pf-macro-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+body.pf-mobile #pf-shell .pf-macro-slot {
+  flex: 0 0 auto;
+  min-width: 2ch;
+  text-align: center;
+  font-size: var(--font-size-11, 0.6875rem);
+  color: var(--color-text-subtle, #7a7971);
+  border: 1px solid var(--color-cool-4, #47495e);
+  border-radius: 3px;
+  padding: 1px 4px;
+  line-height: 1.2;
+}
