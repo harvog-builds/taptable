@@ -39,6 +39,11 @@ import { resolveAdapter } from "./adapter-registry.js";
 
 const MODULE_ID = "taptable";
 
+/** Localize a TAPTABLE.* key. Defined at module scope but only ever CALLED while
+ *  building the placement overlay (a user-driven session, post-i18nInit) — never at
+ *  module scope. */
+const t = key => game.i18n.localize(key);
+
 /** Overlay DOM id (also the CSS hook: body.pf-mobile #pf-template-overlay in taptable-core.css). */
 const OVERLAY_ID = "pf-template-overlay";
 
@@ -213,17 +218,17 @@ class TemplatePlacement {
     overlay.id = OVERLAY_ID;
     overlay.className = "pf-template-overlay";
     overlay.setAttribute("role", "toolbar");
-    overlay.setAttribute("aria-label", "Place template");
+    overlay.setAttribute("aria-label", t("TAPTABLE.PlaceTemplate"));
     overlay.innerHTML = `
       <div class="pf-tpl-row">
-        <button type="button" class="pf-tpl-btn" data-action="rotate-ccw" aria-label="Rotate counter-clockwise">&#8630;</button>
-        <button type="button" class="pf-tpl-btn" data-action="rotate-cw" aria-label="Rotate clockwise">&#8631;</button>
-        <button type="button" class="pf-tpl-btn" data-action="scale-down" aria-label="Shrink template">&minus;</button>
-        <button type="button" class="pf-tpl-btn" data-action="scale-up" aria-label="Grow template">&plus;</button>
+        <button type="button" class="pf-tpl-btn" data-action="rotate-ccw" aria-label="${t("TAPTABLE.RotateCcw")}">&#8630;</button>
+        <button type="button" class="pf-tpl-btn" data-action="rotate-cw" aria-label="${t("TAPTABLE.RotateCw")}">&#8631;</button>
+        <button type="button" class="pf-tpl-btn" data-action="scale-down" aria-label="${t("TAPTABLE.ShrinkTemplate")}">&minus;</button>
+        <button type="button" class="pf-tpl-btn" data-action="scale-up" aria-label="${t("TAPTABLE.GrowTemplate")}">&plus;</button>
       </div>
       <div class="pf-tpl-row">
-        <button type="button" class="pf-tpl-btn pf-tpl-cancel" data-action="cancel">Cancel</button>
-        <button type="button" class="pf-tpl-btn pf-tpl-confirm" data-action="confirm">Confirm</button>
+        <button type="button" class="pf-tpl-btn pf-tpl-cancel" data-action="cancel">${t("TAPTABLE.Cancel")}</button>
+        <button type="button" class="pf-tpl-btn pf-tpl-confirm" data-action="confirm">${t("TAPTABLE.Confirm")}</button>
       </div>`;
     overlay.addEventListener("click", (ev) => {
       const btn = ev.target?.closest?.("[data-action]");

@@ -40,6 +40,13 @@ import { registerSystemAdapter } from "../scripts/adapter-registry.js";
 
 const MODULE_ID = "taptable";
 
+/** Localize / format a TAPTABLE.* key. Defined at module scope but only ever CALLED
+ *  from adapter methods invoked at render / roll time (post-i18nInit) — never at
+ *  module scope (this file is imported for its side effect at parse time, long
+ *  before i18n exists). */
+const t = key => game.i18n.localize(key);
+const tf = (key, data) => game.i18n.format(key, data);
+
 /* ============================================================= */
 /*  Character sheet — touch patches + detection                  */
 /* ============================================================= */
@@ -180,16 +187,19 @@ function skillTotal(sk) {
 /**
  * Category selector -> dnd5e Item subtypes. Order is the display order of the
  * category buttons in the Compendium Add picker.
+ * TIMING: this module-scope constant is evaluated at parse time, BEFORE i18n exists —
+ * so `label` holds the localization KEY; getCompendiumCategories() localizes it when
+ * the picker opens (user-tap time, long after i18nInit).
  * @type {Array<{id:string, label:string, types:string[]}>}
  */
 const COMPENDIUM_CATEGORIES = [
-  { id: "items",      label: "Items",      types: ["weapon", "equipment", "consumable", "tool", "loot", "container"] },
-  { id: "spells",     label: "Spells",     types: ["spell"] },
-  { id: "feats",      label: "Feats",      types: ["feat"] },
-  { id: "features",   label: "Features",   types: ["feat", "subclass"] },
-  { id: "species",    label: "Species",    types: ["race"] },
-  { id: "background", label: "Background", types: ["background"] },
-  { id: "class",      label: "Class",      types: ["class", "subclass"] }
+  { id: "items",      label: "TAPTABLE.CategoryItems",      types: ["weapon", "equipment", "consumable", "tool", "loot", "container"] },
+  { id: "spells",     label: "TAPTABLE.CategorySpells",     types: ["spell"] },
+  { id: "feats",      label: "TAPTABLE.CategoryFeats",      types: ["feat"] },
+  { id: "features",   label: "TAPTABLE.CategoryFeatures",   types: ["feat", "subclass"] },
+  { id: "species",    label: "TAPTABLE.CategorySpecies",    types: ["race"] },
+  { id: "background", label: "TAPTABLE.CategoryBackground", types: ["background"] },
+  { id: "class",      label: "TAPTABLE.CategoryClass",      types: ["class", "subclass"] }
 ];
 
 /* ============================================================= */
@@ -275,7 +285,7 @@ const dnd5eAdapter = {
   /** Activate an item/activity favorite (dnd5e .use()). */
   async useFavorite(doc) {
     if ( typeof doc?.use !== "function" ) {
-      ui.notifications?.warn(`TapTable: "${doc?.name ?? "that favorite"}" cannot be activated from here (dnd5e API drift?).`);
+      ui.notifications?.warn(tf("TAPTABLE.WarnFavoriteNotUsable", { name: doc?.name ?? t("TAPTABLE.ThatFavorite") }));
       console.warn(`${MODULE_ID} | dnd5e adapter: favorite has no use() method.`, doc);
       return;
     }
@@ -320,11 +330,11 @@ const dnd5eAdapter = {
       const label = (CONFIG.DND5E?.abilities?.[id]?.abbreviation ?? id).toUpperCase();
       // kind-qualified `name` so the check and save buttons get distinct aria-labels
       // ("Roll Strength check…" vs "Roll Strength saving throw…").
-      checks.push({ key: id, label, mod: abilityCheckTotal(abl), name: `${full} check` });
-      saves.push({ key: id, label, mod: saveTotal(abl), name: `${full} saving throw` });
+      checks.push({ key: id, label, mod: abilityCheckTotal(abl), name: tf("TAPTABLE.AbilityCheckName", { ability: full }) });
+      saves.push({ key: id, label, mod: saveTotal(abl), name: tf("TAPTABLE.SavingThrowName", { ability: full }) });
     }
-    sections.push({ title: "Ability Checks", kind: "check", entries: checks });
-    sections.push({ title: "Saving Throws", kind: "save", entries: saves });
+    sections.push({ title: t("TAPTABLE.AbilityChecks"), kind: "check", entries: checks });
+    sections.push({ title: t("TAPTABLE.SavingThrows"), kind: "save", entries: saves });
 
     const skills = actor?.system?.skills;
     if ( skills && Object.keys(skills).length ) {
@@ -333,7 +343,7 @@ const dnd5eAdapter = {
         const name = CONFIG.DND5E?.skills?.[id]?.label ?? id;
         entries.push({ key: id, label: name, mod: skillTotal(sk), name });
       }
-      sections.push({ title: "Skills", kind: "skill", entries });
+      sections.push({ title: t("TAPTABLE.Skills"), kind: "skill", entries });
     }
     return { sections };
   },
@@ -367,14 +377,15 @@ const dnd5eAdapter = {
   async rollInitiative(actor) {
     if ( typeof actor?.rollInitiativeDialog === "function" ) return actor.rollInitiativeDialog();
     if ( typeof actor?.rollInitiative === "function" ) return actor.rollInitiative({ createCombatants: true });
-    ui.notifications?.warn("TapTable: initiative rolling is unavailable for this actor (system API drift?).");
+    ui.notifications?.warn(t("TAPTABLE.WarnInitiativeUnavailable"));
   },
 
   /* --- compendium --- */
 
-  /** The dnd5e Compendium Add taxonomy (item-subtype buckets). */
+  /** The dnd5e Compendium Add taxonomy (item-subtype buckets). Labels are localized
+   *  HERE, at picker-open time — the module-scope constant stores only the keys. */
   getCompendiumCategories() {
-    return COMPENDIUM_CATEGORIES.map(c => ({ ...c, types: [...c.types] }));
+    return COMPENDIUM_CATEGORIES.map(c => ({ ...c, label: t(c.label), types: [...c.types] }));
   },
 
   /* --- AoE templates --- */

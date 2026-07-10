@@ -65,17 +65,19 @@ function detectIOS() {
 }
 
 Hooks.once("init", () => {
+  // name/hint/choices are bare localization keys — Foundry localizes them itself
+  // when the settings sheet renders (never call game.i18n at init time: translations
+  // only exist from the i18nInit hook).
   game.settings.register(MODULE_ID, "mode", {
-    name: "TapTable Mode",
-    hint: "auto: enable the phone UI only when a phone-sized touch device is detected. "
-      + "phone: force the phone UI on for this client. off: never activate on this client.",
+    name: "TAPTABLE.SettingModeName",
+    hint: "TAPTABLE.SettingModeHint",
     scope: "client",
     config: true,
     type: String,
     choices: {
-      auto: "Auto-detect (default)",
-      phone: "Force phone UI",
-      off: "Off"
+      auto: "TAPTABLE.SettingModeChoiceAuto",
+      phone: "TAPTABLE.SettingModeChoicePhone",
+      off: "TAPTABLE.SettingModeChoiceOff"
     },
     default: "auto",
     requiresReload: true

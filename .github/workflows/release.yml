@@ -1,0 +1,51 @@
+# TapTable release: on a v* tag push, stamp module.json with the tag version and a
+# tag-pinned download URL, zip the module, and attach BOTH module.zip and the
+# rewritten module.json to the GitHub release. "manifest" stays pointed at
+# releases/latest/download/module.json so Foundry always installs the newest release.
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write   # create the release + upload assets
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Read version from tag
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Stamp module.json (version + tag-pinned download URL)
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          jq --arg ver "$VERSION" \
+             --arg dl "https://github.com/${GITHUB_REPOSITORY}/releases/download/v${VERSION}/module.zip" \
+             '.version = $ver | .download = $dl' \
+             module.json > module.json.tmp
+          mv module.json.tmp module.json
+          jq -e . module.json > /dev/null
+
+      - name: Build module.zip
+        run: |
+          zip -r module.zip \
+            module.json LICENSE NOTICE README.md \
+            scripts/ adapters/ styles/ lang/ \
+            -x "*.git*"
+
+      - name: Create release and attach assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            --title "TapTable $GITHUB_REF_NAME" \
+            --generate-notes \
+            module.zip module.json

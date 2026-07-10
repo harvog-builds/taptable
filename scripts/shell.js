@@ -87,6 +87,14 @@ import { resolveAdapter } from "./adapter-registry.js";
 const MODULE_ID = "taptable";
 const CONSENT_SETTING = "perfProfileConsent";
 
+/** Localize a TAPTABLE.* key. Defined at module scope but only ever CALLED at
+ *  render time or inside user-tap handlers — both long after the i18nInit hook,
+ *  when game.i18n has its translations. Never call at module scope. */
+const t = key => game.i18n.localize(key);
+
+/** Format a TAPTABLE.* key with interpolation data (same timing contract as t()). */
+const tf = (key, data) => game.i18n.format(key, data);
+
 /** Max actor rows the GM Home pane renders at once (search narrows; keeps the DOM
  *  small and the pane snappy with 100+ world actors). */
 const GM_LIST_RENDER_CAP = 30;
@@ -154,9 +162,13 @@ export function currentVh() {
  *                                 the Mods menu pane). Unknown values warn and
  *                                 fall back to "nav".
  * @param {string} [tab.icon]      Font Awesome icon classes.
- * @param {string} [tab.label]     Short label under the icon.
+ * @param {string} [tab.label]     Short label under the icon. May be a plain string
+ *                                 OR an i18n key — it is passed through
+ *                                 game.i18n.localize at render time (an unknown
+ *                                 string passes through unchanged).
  * @param {string} [tab.hint]      Optional one-line description (rendered under
  *                                 the label on Mods rows; ignored for nav tabs).
+ *                                 Localized at render time like label.
  * @param {number} [tab.order]     Sort order (ascending; built-ins use 10-50).
  * @param {Function} tab.open      Called on tap. May return an Application (or a
  *                                 Promise of one) to have the shell maximize it.
@@ -416,7 +428,7 @@ function canvasIsLive() {
 async function placeActorAtViewCenter(actor) {
   if ( !game.user?.isGM ) return;                          // defense in depth; UI never shows this to non-GM
   if ( !canvasIsLive() ) {
-    ui.notifications?.warn("TapTable: the map is off on this device (Lite mode) or no scene is viewed — cannot place a token from here.");
+    ui.notifications?.warn(t("TAPTABLE.WarnNoCanvasPlace"));
     return;
   }
   if ( placementInFlight ) return;
@@ -429,7 +441,7 @@ async function placeActorAtViewCenter(actor) {
     };
     if ( !Number.isFinite(center.x) || !Number.isFinite(center.y) ) {
       console.warn(`${MODULE_ID} | shell: could not determine the view center (core API drift?).`);
-      ui.notifications?.warn("TapTable: could not determine the view center; token not placed.");
+      ui.notifications?.warn(t("TAPTABLE.WarnNoViewCenter"));
       return;
     }
     const token = await actor.getTokenDocument({}, { parent: canvas.scene });
@@ -454,10 +466,10 @@ async function placeActorAtViewCenter(actor) {
     }
     token.updateSource(position);
     const created = await canvas.scene.createEmbeddedDocuments("Token", [token.toObject()]);
-    if ( created?.length ) ui.notifications?.info(`TapTable: placed ${actor.name} at the view center.`);
+    if ( created?.length ) ui.notifications?.info(tf("TAPTABLE.InfoPlacedActor", { name: actor.name }));
   } catch(err) {
     console.warn(`${MODULE_ID} | shell: token placement failed.`, err);
-    ui.notifications?.warn(`TapTable: could not place ${actor.name} (see console).`);
+    ui.notifications?.warn(tf("TAPTABLE.WarnPlaceFailed", { name: actor.name }));
   } finally {
     placementInFlight = false;
   }
@@ -487,8 +499,8 @@ function augmentCombatPopout(app) {
   const tracker = el.querySelector("ol.combat-tracker");
   if ( tracker && !combat?.turns?.length && !tracker.querySelector(".pf-combat-empty") ) {
     tracker.append(h("li", { class: "pf-combat-empty", text: combat
-      ? "No combatants yet. The GM adds tokens to the encounter on the map."
-      : "No active combat. When the GM starts an encounter it appears here." }));
+      ? t("TAPTABLE.CombatEmptyNoCombatants")
+      : t("TAPTABLE.CombatEmptyNoCombat") }));
   }
 
   // Per-combatant Target toggle (core v14 tracker has none — tracker.hbs TODO).
@@ -501,7 +513,7 @@ function augmentCombatPopout(app) {
     const btn = h("button", {
       type: "button",
       class: "inline-control combatant-control icon fa-solid fa-crosshairs pf-target",
-      "aria-label": "Target",
+      "aria-label": t("TAPTABLE.Target"),
       dataset: { tokenId }
     });
     btn.classList.toggle("active", isTokenTargeted(tokenId));
@@ -520,7 +532,7 @@ function augmentCombatPopout(app) {
       type: "button",
       class: "pf-end-turn",
       disabled: !owns,
-      text: "End Turn"
+      text: t("TAPTABLE.EndTurn")
     });
     endBtn.addEventListener("click", () => {
       if ( !game.combat?.combatant?.isOwner ) return;
@@ -748,12 +760,12 @@ class PocketShell extends foundry.applications.api.ApplicationV2 {
   /** Informative Board pane for clients without a live canvas. */
   #buildBoardPane() {
     const pane = h("section", { class: "pf-pane", dataset: { pane: "board" } });
-    pane.append(h("h2", { class: "pf-pane-title", text: "Board" }));
+    pane.append(h("h2", { class: "pf-pane-title", text: t("TAPTABLE.TabBoard") }));
     let lite = false;
     try { lite = !!game.settings.get("core", "noCanvas"); } catch(err) { /* treat as not Lite */ }
     pane.append(h("p", { class: "pf-empty", text: lite
-      ? "Lite mode is on, so the game map is turned off on this device. Turn Lite mode off in Settings (and reload) to see the board."
-      : "No scene is currently being viewed, so there is no board to show yet." }));
+      ? t("TAPTABLE.BoardLiteMode")
+      : t("TAPTABLE.BoardNoScene") }));
     return pane;
   }
 
@@ -794,7 +806,7 @@ class PocketShell extends foundry.applications.api.ApplicationV2 {
       type: "button",
       class: "pf-strip-btn pf-hud-btn",
       "data-action": "pfTokenHud",
-      "aria-label": "Open the selected token's HUD (status effects, target)"
+      "aria-label": t("TAPTABLE.TokenHudLabel")
     }, [h("i", { class: "fa-solid fa-bolt", inert: true })]));
 
     // Target mode toggle (ON activates the token-layer target tool).
@@ -804,7 +816,7 @@ class PocketShell extends foundry.applications.api.ApplicationV2 {
       class: `pf-strip-btn pf-target-toggle${targetOn ? " active" : ""}`,
       "data-action": "pfTargetMode",
       "aria-pressed": targetOn ? "true" : "false",
-      "aria-label": targetOn ? "Target mode is on — tap to turn off" : "Target mode: tap tokens to target them"
+      "aria-label": targetOn ? t("TAPTABLE.TargetModeOn") : t("TAPTABLE.TargetModeOff")
     }, [h("i", { class: "fa-solid fa-crosshairs", inert: true })]));
 
     // Multi-Select toggle (ON accumulates selection via canvas-touch.js).
@@ -814,7 +826,7 @@ class PocketShell extends foundry.applications.api.ApplicationV2 {
       class: `pf-strip-btn pf-multi-toggle${multiOn ? " active" : ""}`,
       "data-action": "pfMultiSelect",
       "aria-pressed": multiOn ? "true" : "false",
-      "aria-label": multiOn ? "Multi-select is on — tap to turn off" : "Multi-select: tap owned tokens to select several"
+      "aria-label": multiOn ? t("TAPTABLE.MultiSelectOn") : t("TAPTABLE.MultiSelectOff")
     }, [h("i", { class: "fa-solid fa-object-group", inert: true })]));
 
     return group;
@@ -843,16 +855,16 @@ class PocketShell extends foundry.applications.api.ApplicationV2 {
         type: "button",
         class: `pf-strip-btn pf-pause-toggle${paused ? " paused" : ""}`,
         "data-action": "pfPauseToggle",
-        "aria-label": paused ? "Resume the game" : "Pause the game",
+        "aria-label": paused ? t("TAPTABLE.ResumeGame") : t("TAPTABLE.PauseGame"),
         "aria-pressed": paused ? "true" : "false"
       }, [
         h("i", { class: paused ? "fa-solid fa-play" : "fa-solid fa-pause", inert: true }),
-        h("span", { text: paused ? "Paused — tap to resume" : "Pause" })
+        h("span", { text: paused ? t("TAPTABLE.PausedTapToResume") : t("TAPTABLE.Pause") })
       ]));
     } else {
       strip.append(h("span", { class: `pf-pause-state${paused ? " paused" : ""}`, role: "status" }, [
         h("i", { class: paused ? "fa-solid fa-pause" : "fa-solid fa-play", inert: true }),
-        h("span", { text: paused ? "Game paused" : "Game running" })
+        h("span", { text: paused ? t("TAPTABLE.GamePaused") : t("TAPTABLE.GameRunning") })
       ]));
     }
     // 234-1: canvas combat controls (Board surface, live canvas only) — open the
@@ -865,10 +877,10 @@ class PocketShell extends foundry.applications.api.ApplicationV2 {
         type: "button",
         class: `pf-strip-btn${this.#pane === "scenes" ? " active" : ""}`,
         "data-action": "pfScenes",
-        "aria-label": "Switch which scene you view"
+        "aria-label": t("TAPTABLE.SwitchSceneView")
       }, [
         h("i", { class: "fa-solid fa-map-location-dot", inert: true }),
-        h("span", { text: "Scenes" })
+        h("span", { text: t("TAPTABLE.Scenes") })
       ]));
     } else {
       // Player affordance: ONLY a way back to the active scene, and only when
@@ -882,10 +894,10 @@ class PocketShell extends foundry.applications.api.ApplicationV2 {
           type: "button",
           class: "pf-strip-btn",
           "data-action": "pfBackToActive",
-          "aria-label": "Back to the active scene"
+          "aria-label": t("TAPTABLE.BackToActiveSceneLabel")
         }, [
           h("i", { class: "fa-solid fa-rotate-left", inert: true }),
-          h("span", { text: "Back to active scene" })
+          h("span", { text: t("TAPTABLE.BackToActiveScene") })
         ]));
       }
     }
@@ -900,7 +912,7 @@ class PocketShell extends foundry.applications.api.ApplicationV2 {
       game.togglePause(!game.paused, { broadcast: true });
     } catch(err) {
       console.warn(`${MODULE_ID} | shell: game.togglePause failed (core API drift?).`, err);
-      ui.notifications?.warn("TapTable: could not toggle the pause state (see console).");
+      ui.notifications?.warn(t("TAPTABLE.WarnPauseToggle"));
     }
   }
 
@@ -916,7 +928,7 @@ class PocketShell extends foundry.applications.api.ApplicationV2 {
     if ( !game.user?.isGM ) return;
     const scene = game.scenes?.get(target.dataset.sceneId);
     if ( !scene ) {
-      ui.notifications?.warn("TapTable: that scene no longer exists.");
+      ui.notifications?.warn(t("TAPTABLE.WarnSceneGone"));
       return;
     }
     this.#pane = null;
@@ -947,13 +959,13 @@ class PocketShell extends foundry.applications.api.ApplicationV2 {
   static #onTokenHud() {
     const tok = canvas?.tokens?.controlled?.[0];
     if ( !tok ) {
-      ui.notifications?.warn("TapTable: select a token you own first (tap it on the map), then open its HUD.");
+      ui.notifications?.warn(t("TAPTABLE.WarnSelectTokenFirst"));
       return;
     }
     try {
       const hud = canvas.hud?.token;
       if ( !hud ) {
-        ui.notifications?.warn("TapTable: the token HUD is unavailable here (Lite mode or core API drift).");
+        ui.notifications?.warn(t("TAPTABLE.WarnHudUnavailable"));
         return;
       }
       if ( hud.rendered && (hud.object === tok) ) hud.close();   // tapping again closes it
@@ -963,7 +975,7 @@ class PocketShell extends foundry.applications.api.ApplicationV2 {
       }
     } catch(err) {
       console.warn(`${MODULE_ID} | shell: token HUD open failed.`, err);
-      ui.notifications?.warn("TapTable: could not open the token HUD (see console).");
+      ui.notifications?.warn(t("TAPTABLE.WarnHudOpenFailed"));
     }
   }
 
@@ -983,7 +995,7 @@ class PocketShell extends foundry.applications.api.ApplicationV2 {
       await ui.controls?.activate({ control: "tokens", tool: on ? "select" : "target" });
     } catch(err) {
       console.warn(`${MODULE_ID} | shell: could not toggle target mode.`, err);
-      ui.notifications?.warn("TapTable: could not toggle target mode (see console).");
+      ui.notifications?.warn(t("TAPTABLE.WarnTargetModeFailed"));
     }
     if ( shell?.rendered ) shell.render();
   }
@@ -1036,7 +1048,7 @@ class PocketShell extends foundry.applications.api.ApplicationV2 {
     let current = null;
     try { current = combat.combatant ?? null; } catch(err) { /* core drift */ }
 
-    const carousel = h("div", { class: "pf-combat-carousel", "aria-label": "Combat turn order" });
+    const carousel = h("div", { class: "pf-combat-carousel", "aria-label": t("TAPTABLE.CombatTurnOrder") });
 
     // Roll-initiative control (GM: Roll All; player: only when they own an unrolled
     // combatant). Rolling initiative is a WORLD write, so this only WIRES the call.
@@ -1048,7 +1060,7 @@ class PocketShell extends foundry.applications.api.ApplicationV2 {
     const track = h("div", { class: "pf-carousel-track", role: "list" });
     for ( const combatant of turns ) {
       if ( !combatant ) continue;
-      let id = "", name = "(unknown)", img = "icons/svg/mystery-man.svg", init = null, defeated = false, isCurrent = false;
+      let id = "", name = t("TAPTABLE.UnknownCombatant"), img = "icons/svg/mystery-man.svg", init = null, defeated = false, isCurrent = false;
       try { id = combatant.id ?? ""; } catch(err) { /* keep "" */ }
       try { name = combatant.name || name; } catch(err) { /* keep default */ }
       try { img = combatant.img || combatant.token?.texture?.src || img; } catch(err) { /* keep default */ }
@@ -1059,7 +1071,7 @@ class PocketShell extends foundry.applications.api.ApplicationV2 {
         type: "button",
         class: `pf-combatant${isCurrent ? " current" : ""}${defeated ? " defeated" : ""}`,
         "data-action": "pfCombatantFocus",
-        "aria-label": `Focus ${name}${isCurrent ? " (current turn)" : ""}`,
+        "aria-label": isCurrent ? tf("TAPTABLE.FocusCombatantCurrent", { name }) : tf("TAPTABLE.FocusCombatant", { name }),
         "aria-current": isCurrent ? "true" : null,
         dataset: { combatantId: id }
       }, [
@@ -1079,10 +1091,10 @@ class PocketShell extends foundry.applications.api.ApplicationV2 {
       class: "pf-carousel-end",
       disabled: !owns,
       "data-action": "pfCarouselEndTurn",
-      "aria-label": owns ? "End the current combatant's turn" : "Only the current combatant's owner can end the turn"
+      "aria-label": owns ? t("TAPTABLE.EndTurnLabel") : t("TAPTABLE.EndTurnOwnerOnly")
     }, [
       h("i", { class: "fa-solid fa-forward-step", inert: true }),
-      h("span", { text: "End Turn" })
+      h("span", { text: t("TAPTABLE.EndTurn") })
     ]));
 
     return carousel;
@@ -1108,10 +1120,10 @@ class PocketShell extends foundry.applications.api.ApplicationV2 {
         type: "button",
         class: "pf-carousel-roll",
         "data-action": "pfCarouselRollInit",
-        "aria-label": "Roll initiative for all combatants that have none"
+        "aria-label": t("TAPTABLE.RollAllLabel")
       }, [
         h("i", { class: "fa-solid fa-dice-d20", inert: true }),
-        h("span", { text: "Roll All" })
+        h("span", { text: t("TAPTABLE.RollAll") })
       ]);
     }
     let mine = null;
@@ -1122,18 +1134,18 @@ class PocketShell extends foundry.applications.api.ApplicationV2 {
       }) ?? null;
     } catch(err) { /* none */ }
     if ( !mine ) return null;
-    let label = "your combatant", mineId = "";
+    let label = t("TAPTABLE.YourCombatant"), mineId = "";
     try { label = mine.name || label; } catch(err) { /* keep */ }
     try { mineId = mine.id ?? ""; } catch(err) { /* keep */ }
     return h("button", {
       type: "button",
       class: "pf-carousel-roll",
       "data-action": "pfCarouselRollInit",
-      "aria-label": `Roll initiative for ${label}`,
+      "aria-label": tf("TAPTABLE.RollInitiativeFor", { name: label }),
       dataset: { combatantId: mineId }
     }, [
       h("i", { class: "fa-solid fa-dice-d20", inert: true }),
-      h("span", { text: "Roll Initiative" })
+      h("span", { text: t("TAPTABLE.RollInitiative") })
     ]);
   }
 
@@ -1146,19 +1158,19 @@ class PocketShell extends foundry.applications.api.ApplicationV2 {
    */
   static #onCombatantFocus(_event, target) {
     if ( !canvasIsLive() ) {
-      ui.notifications?.warn("TapTable: the map is off on this device (Lite mode) or no scene is viewed — cannot focus a combatant.");
+      ui.notifications?.warn(t("TAPTABLE.WarnNoCanvasFocus"));
       return;
     }
     const combat = game.combats?.active;
     const combatant = combat?.combatants?.get(target?.dataset?.combatantId);
     if ( !combatant ) {
-      ui.notifications?.warn("TapTable: that combatant is no longer in the encounter.");
+      ui.notifications?.warn(t("TAPTABLE.WarnCombatantGone"));
       return;
     }
     let token = null;
     try { token = combatant.token?.object ?? null; } catch(err) { /* not on this scene */ }
     if ( !token ) {
-      ui.notifications?.warn("TapTable: that combatant's token is not on the scene you are viewing.");
+      ui.notifications?.warn(t("TAPTABLE.WarnCombatantNotOnScene"));
       return;
     }
     try {
@@ -1169,7 +1181,7 @@ class PocketShell extends foundry.applications.api.ApplicationV2 {
       }
     } catch(err) {
       console.warn(`${MODULE_ID} | shell: focusing a combatant failed.`, err);
-      ui.notifications?.warn("TapTable: could not focus that combatant (see console).");
+      ui.notifications?.warn(t("TAPTABLE.WarnFocusFailed"));
     }
   }
 
@@ -1213,7 +1225,7 @@ class PocketShell extends foundry.applications.api.ApplicationV2 {
       if ( !combatant?.isOwner ) return;   // defense in depth; the control is player-owned only
       const actor = combatant.actor;
       if ( !actor ) {
-        ui.notifications?.warn("TapTable: that combatant has no actor to roll initiative for.");
+        ui.notifications?.warn(t("TAPTABLE.WarnNoActorInitiative"));
         return;
       }
       // The system adapter rolls initiative (dnd5e: rollInitiativeDialog; NullAdapter
@@ -1222,7 +1234,7 @@ class PocketShell extends foundry.applications.api.ApplicationV2 {
         .catch(err => console.warn(`${MODULE_ID} | shell: rollInitiative failed.`, err));
     } catch(err) {
       console.warn(`${MODULE_ID} | shell: roll initiative threw.`, err);
-      ui.notifications?.warn("TapTable: could not roll initiative (see console).");
+      ui.notifications?.warn(t("TAPTABLE.WarnRollInitiativeFailed"));
     }
   }
 
@@ -1239,19 +1251,18 @@ class PocketShell extends foundry.applications.api.ApplicationV2 {
     if ( !game.user?.isGM ) return;   // defense in depth; never rendered for non-GM
     const scene = game.scenes?.get(target.dataset.sceneId);
     if ( !scene ) {
-      ui.notifications?.warn("TapTable: that scene no longer exists.");
+      ui.notifications?.warn(t("TAPTABLE.WarnSceneGone"));
       return;
     }
-    const ok = await pfConfirm("Activate scene",
-      `<p>Activate <strong>${escapeHtml(scene.name)}</strong> for all players?</p>`
-      + "<p>This changes the world's active scene and pulls every connected player to it.</p>");
+    const ok = await pfConfirm(t("TAPTABLE.ActivateSceneTitle"),
+      tf("TAPTABLE.ActivateSceneContent", { name: escapeHtml(scene.name) }));
     if ( !ok ) return;
     try {
       await scene.activate();
-      ui.notifications?.info(`TapTable: activated ${scene.name} for all players.`);
+      ui.notifications?.info(tf("TAPTABLE.InfoSceneActivated", { name: scene.name }));
     } catch(err) {
       console.warn(`${MODULE_ID} | shell: Scene#activate failed.`, err);
-      ui.notifications?.warn(`TapTable: could not activate ${scene.name} (see console).`);
+      ui.notifications?.warn(tf("TAPTABLE.WarnSceneActivateFailed", { name: scene.name }));
     }
   }
 
@@ -1266,23 +1277,22 @@ class PocketShell extends foundry.applications.api.ApplicationV2 {
    */
   #buildScenesPane() {
     const pane = h("section", { class: "pf-pane", dataset: { pane: "scenes" } });
-    pane.append(h("h2", { class: "pf-pane-title", text: "Scenes" }));
+    pane.append(h("h2", { class: "pf-pane-title", text: t("TAPTABLE.Scenes") }));
     if ( !game.user?.isGM ) {   // defense in depth; the pane is only reachable from the GM strip
-      pane.append(h("p", { class: "pf-empty", text: "Only a GM can browse scenes here." }));
+      pane.append(h("p", { class: "pf-empty", text: t("TAPTABLE.ScenesGmOnly") }));
       return pane;
     }
     const entries = [];
     try {
       for ( const s of game.scenes ?? [] ) {
-        entries.push({ id: s.id, name: s.navName || s.name || "(unnamed)",
+        entries.push({ id: s.id, name: s.navName || s.name || t("TAPTABLE.Unnamed"),
           nav: s.navigation ? 1 : 0, active: s.active ? 1 : 0, viewed: !!s.isView });
       }
     } catch(err) {
       console.warn(`${MODULE_ID} | shell: could not enumerate world scenes.`, err);
     }
     entries.sort((a, b) => (b.active - a.active) || (b.nav - a.nav) || a.name.localeCompare(b.name));
-    pane.append(h("p", { class: "pf-hint",
-      text: "Tapping changes which scene YOU view on this device only — it does not move players or activate the scene." }));
+    pane.append(h("p", { class: "pf-hint", text: t("TAPTABLE.ScenesHint") }));
     const isGM = !!game.user?.isGM;   // pane is GM-only already; belt-and-braces for Activate
     const list = h("div", { class: "pf-scenes" });
     for ( const e of entries ) {
@@ -1291,12 +1301,12 @@ class PocketShell extends foundry.applications.api.ApplicationV2 {
         type: "button",
         class: `pf-scene-row${e.viewed ? " viewed" : ""}`,
         "data-action": "pfSceneView",
-        "aria-label": `View ${e.name}`,
+        "aria-label": tf("TAPTABLE.ViewScene", { name: e.name }),
         dataset: { sceneId: e.id }
       }, [
         h("span", { class: "pf-scene-name", text: e.name }),
-        e.viewed ? h("span", { class: "pf-scene-badge pf-viewed", text: "Viewed" }) : null,
-        e.active ? h("span", { class: "pf-scene-badge pf-active", text: "Active" }) : null
+        e.viewed ? h("span", { class: "pf-scene-badge pf-viewed", text: t("TAPTABLE.Viewed") }) : null,
+        e.active ? h("span", { class: "pf-scene-badge pf-active", text: t("TAPTABLE.Active") }) : null
       ]);
       const row = h("div", { class: "pf-scene-item" }, [view]);
       // 231-2: GM-only Activate control alongside the view row. Scene#activate is a
@@ -1311,16 +1321,17 @@ class PocketShell extends foundry.applications.api.ApplicationV2 {
           class: "pf-scene-activate",
           "data-action": "pfSceneActivate",
           disabled: !!e.active,
-          "aria-label": e.active ? `${e.name} is already the active scene` : `Activate ${e.name} for all players`,
+          "aria-label": e.active ? tf("TAPTABLE.SceneAlreadyActive", { name: e.name })
+            : tf("TAPTABLE.ActivateSceneFor", { name: e.name }),
           dataset: { sceneId: e.id }
         }, [
           h("i", { class: "fa-solid fa-bullhorn", inert: true }),
-          h("span", { class: "pf-scene-activate-label", text: "Activate" })
+          h("span", { class: "pf-scene-activate-label", text: t("TAPTABLE.Activate") })
         ]));
       }
       list.append(row);
     }
-    if ( !entries.length ) list.append(h("p", { class: "pf-empty", text: "No scenes exist in this world yet." }));
+    if ( !entries.length ) list.append(h("p", { class: "pf-empty", text: t("TAPTABLE.ScenesEmpty") }));
     pane.append(list);
     return pane;
   }
@@ -1337,7 +1348,7 @@ class PocketShell extends foundry.applications.api.ApplicationV2 {
    */
   #buildModsPane() {
     const pane = h("section", { class: "pf-pane", dataset: { pane: "mods" } });
-    pane.append(h("h2", { class: "pf-pane-title", text: "Mods" }));
+    pane.append(h("h2", { class: "pf-pane-title", text: t("TAPTABLE.TabMods") }));
     const entries = [...tabRegistry.values()]
       .filter(t => t.section === "modules")
       .sort((a, b) => a.order - b.order);
@@ -1352,23 +1363,26 @@ class PocketShell extends foundry.applications.api.ApplicationV2 {
         }
       }
       if ( !visible ) continue;
+      // Registered labels/hints may be localization keys (the built-ins are) or plain
+      // strings from third-party modules — game.i18n.localize passes an unknown string
+      // through unchanged, so both work.
+      const label = t(entry.label);
       list.append(h("button", {
         type: "button",
         class: "pf-mod-row",
         "data-action": "pfTab",
-        "aria-label": entry.label,
+        "aria-label": label,
         dataset: { tab: entry.id }
       }, [
         h("i", { class: entry.icon, inert: true }),
         h("div", { class: "pf-mod-text" }, [
-          h("span", { class: "pf-mod-label", text: entry.label }),
-          entry.hint ? h("span", { class: "pf-mod-hint", text: entry.hint }) : null
+          h("span", { class: "pf-mod-label", text: label }),
+          entry.hint ? h("span", { class: "pf-mod-hint", text: t(entry.hint) }) : null
         ])
       ]));
     }
     if ( !list.childElementCount ) {
-      list.append(h("p", { class: "pf-empty",
-        text: "No modules have added shortcuts here yet. Modules can register entries via the taptable registerTab API (section: \"modules\") — see the module README." }));
+      list.append(h("p", { class: "pf-empty", text: t("TAPTABLE.ModsEmpty") }));
     }
     pane.append(list);
     return pane;
@@ -1402,7 +1416,7 @@ class PocketShell extends foundry.applications.api.ApplicationV2 {
   #buildMacrosPane() {
     const PAGE_COUNT = 5;
     const pane = h("section", { class: "pf-pane", dataset: { pane: "macros" } });
-    pane.append(h("h2", { class: "pf-pane-title", text: "Macros" }));
+    pane.append(h("h2", { class: "pf-pane-title", text: t("TAPTABLE.TabMacros") }));
 
     // Which hotbar pages hold at least one macro (drives page nav + the empty state).
     const pagesWithMacros = [];
@@ -1418,8 +1432,7 @@ class PocketShell extends foundry.applications.api.ApplicationV2 {
 
     // Graceful empty state: no hotbar macros on any page.
     if ( total === 0 ) {
-      pane.append(h("p", { class: "pf-empty",
-        text: "No macros on your hotbar yet. Add macros to the hotbar (drag them onto it on desktop, or create them in the Macro Directory) and they will appear here to tap and run." }));
+      pane.append(h("p", { class: "pf-empty", text: t("TAPTABLE.MacrosEmpty") }));
       return pane;
     }
 
@@ -1440,7 +1453,7 @@ class PocketShell extends foundry.applications.api.ApplicationV2 {
     for ( const entry of slots ) {
       const macro = entry?.macro;
       if ( !macro ) continue;   // empty slot — nothing to run
-      let id = "", name = "(unnamed macro)", img = "icons/svg/dice-target.svg";
+      let id = "", name = t("TAPTABLE.UnnamedMacro"), img = "icons/svg/dice-target.svg";
       try { id = macro.id ?? ""; } catch(err) { /* keep "" */ }
       try { name = macro.name || name; } catch(err) { /* keep default */ }
       try { img = macro.img || img; } catch(err) { /* keep default */ }
@@ -1450,7 +1463,7 @@ class PocketShell extends foundry.applications.api.ApplicationV2 {
         type: "button",
         class: "pf-macro-row",
         "data-action": "pfMacroExec",
-        "aria-label": `Run macro ${name}`,
+        "aria-label": tf("TAPTABLE.RunMacro", { name }),
         dataset: { macroId: id, slot: (slot === null) ? "" : String(slot) }
       }, [
         h("img", { class: "pf-macro-img", src: img, alt: "", loading: "lazy" }),
@@ -1461,7 +1474,7 @@ class PocketShell extends foundry.applications.api.ApplicationV2 {
     // Defensive: the same synchronous getHotbarMacros scan said this page has macros,
     // so this should never show; kept so the list is never silently empty on drift.
     if ( !list.childElementCount ) {
-      list.append(h("p", { class: "pf-empty", text: "No macros on this page." }));
+      list.append(h("p", { class: "pf-empty", text: t("TAPTABLE.MacrosPageEmpty") }));
     }
     pane.append(list);
     return pane;
@@ -1485,16 +1498,17 @@ class PocketShell extends foundry.applications.api.ApplicationV2 {
       disabled: idx <= 0,
       "data-action": "pfMacroPage",
       dataset: { dir: "-1" },
-      "aria-label": "Previous hotbar page with macros"
+      "aria-label": t("TAPTABLE.MacrosPrevPage")
     }, [h("i", { class: "fa-solid fa-chevron-left", inert: true })]));
-    nav.append(h("span", { class: "pf-macro-page-label", role: "status", text: `Page ${this.#macroPage} / 5` }));
+    nav.append(h("span", { class: "pf-macro-page-label", role: "status",
+      text: tf("TAPTABLE.MacrosPageLabel", { page: this.#macroPage, total: 5 }) }));
     nav.append(h("button", {
       type: "button",
       class: "pf-macro-page-next",
       disabled: idx >= (pagesWithMacros.length - 1),
       "data-action": "pfMacroPage",
       dataset: { dir: "1" },
-      "aria-label": "Next hotbar page with macros"
+      "aria-label": t("TAPTABLE.MacrosNextPage")
     }, [h("i", { class: "fa-solid fa-chevron-right", inert: true })]));
     return nav;
   }
@@ -1512,19 +1526,19 @@ class PocketShell extends foundry.applications.api.ApplicationV2 {
     let macro = null;
     try { macro = game.macros?.get(id) ?? null; } catch(err) { /* resolved below */ }
     if ( !macro ) {
-      ui.notifications?.warn("TapTable: that macro is no longer available.");
+      ui.notifications?.warn(t("TAPTABLE.WarnMacroGone"));
       return;
     }
     if ( typeof macro.execute !== "function" ) {
       console.warn(`${MODULE_ID} | shell: macro "${id}" has no execute() (core API drift?).`, macro);
-      ui.notifications?.warn("TapTable: that macro cannot be run from here (core API drift?).");
+      ui.notifications?.warn(t("TAPTABLE.WarnMacroNotRunnable"));
       return;
     }
     try {
       Promise.resolve(macro.execute()).catch(err => console.warn(`${MODULE_ID} | shell: macro execute failed.`, err));
     } catch(err) {
       console.warn(`${MODULE_ID} | shell: macro execute threw.`, err);
-      ui.notifications?.warn("TapTable: could not run that macro (see console).");
+      ui.notifications?.warn(t("TAPTABLE.WarnMacroRunFailed"));
     }
   }
 
@@ -1566,7 +1580,7 @@ class PocketShell extends foundry.applications.api.ApplicationV2 {
    */
   #buildGMHomePane() {
     const pane = h("section", { class: "pf-pane", dataset: { pane: "home" } });
-    pane.append(h("h2", { class: "pf-pane-title", text: "Game Master" }));
+    pane.append(h("h2", { class: "pf-pane-title", text: t("TAPTABLE.GameMaster") }));
 
     // Persistent GM control header: pause toggle + Scenes browser, always present
     // whenever the GM Home pane renders — independent of board mode and pause
@@ -1585,28 +1599,28 @@ class PocketShell extends foundry.applications.api.ApplicationV2 {
         type: "button",
         class: `pf-strip-btn pf-pause-toggle${paused ? " paused" : ""}`,
         "data-action": "pfPauseToggle",
-        "aria-label": paused ? "Resume the game" : "Pause the game",
+        "aria-label": paused ? t("TAPTABLE.ResumeGame") : t("TAPTABLE.PauseGame"),
         "aria-pressed": paused ? "true" : "false"
       }, [
         h("i", { class: paused ? "fa-solid fa-play" : "fa-solid fa-pause", inert: true }),
-        h("span", { text: paused ? "Paused — tap to resume" : "Pause" })
+        h("span", { text: paused ? t("TAPTABLE.PausedTapToResume") : t("TAPTABLE.Pause") })
       ]),
       h("span", { class: "pf-strip-spacer" }),
       h("button", {
         type: "button",
         class: `pf-strip-btn${this.#pane === "scenes" ? " active" : ""}`,
         "data-action": "pfScenes",
-        "aria-label": "Switch which scene you view"
+        "aria-label": t("TAPTABLE.SwitchSceneView")
       }, [
         h("i", { class: "fa-solid fa-map-location-dot", inert: true }),
-        h("span", { text: "Scenes" })
+        h("span", { text: t("TAPTABLE.Scenes") })
       ])
     ]));
 
     const entries = [];
     try {
       for ( const a of game.actors ?? [] ) {
-        entries.push({ id: a.id, name: a.name ?? "(unnamed)", img: a.img ?? "icons/svg/mystery-man.svg", type: a.type ?? "" });
+        entries.push({ id: a.id, name: a.name ?? t("TAPTABLE.Unnamed"), img: a.img ?? "icons/svg/mystery-man.svg", type: a.type ?? "" });
       }
     } catch(err) {
       console.warn(`${MODULE_ID} | shell: could not enumerate world actors.`, err);
@@ -1621,7 +1635,8 @@ class PocketShell extends foundry.applications.api.ApplicationV2 {
     const canPlace = canvasIsLive();
 
     const search = h("input", { type: "search", class: "pf-gm-search", value: this.#gmSearch,
-      placeholder: `Search ${entries.length} actors…`, "aria-label": "Search actors",
+      placeholder: tf("TAPTABLE.SearchActorsPlaceholder", { count: entries.length }),
+      "aria-label": t("TAPTABLE.SearchActors"),
       autocomplete: "off", spellcheck: "false" });
     const list = h("div", { class: "pf-gm-actors" });
     const renderRows = () => {
@@ -1631,30 +1646,29 @@ class PocketShell extends foundry.applications.api.ApplicationV2 {
       list.replaceChildren();
       for ( const e of shown ) {
         const open = h("button", { type: "button", class: "pf-gm-open", "data-action": "pfGmOpenActor",
-          "aria-label": `Open ${e.name}`, dataset: { actorId: e.id } }, [
+          "aria-label": tf("TAPTABLE.OpenActor", { name: e.name }), dataset: { actorId: e.id } }, [
           h("img", { src: e.img, alt: "", loading: "lazy" }),
           h("span", { class: "pf-gm-name", text: e.name })
         ]);
         const row = h("div", { class: "pf-gm-row" }, [open]);
         if ( isGM ) {
           row.append(h("button", { type: "button", class: "pf-gm-place", "data-action": "pfGmPlace",
-            disabled: !canPlace, "aria-label": `Place ${e.name} on the scene`, dataset: { actorId: e.id } },
+            disabled: !canPlace, "aria-label": tf("TAPTABLE.PlaceActor", { name: e.name }), dataset: { actorId: e.id } },
           [h("i", { class: "fa-solid fa-location-crosshairs", inert: true })]));
         }
         list.append(row);
       }
       if ( !matches.length ) {
-        list.append(h("p", { class: "pf-empty", text: "No actors match that search." }));
+        list.append(h("p", { class: "pf-empty", text: t("TAPTABLE.NoActorsMatch") }));
       } else if ( matches.length > shown.length ) {
-        list.append(h("p", { class: "pf-hint", text: `Showing ${shown.length} of ${matches.length} — type to narrow.` }));
+        list.append(h("p", { class: "pf-hint", text: tf("TAPTABLE.ShowingOf", { shown: shown.length, total: matches.length }) }));
       }
     };
     renderRows();
     search.addEventListener("input", () => { this.#gmSearch = search.value; renderRows(); });
 
     pane.append(search);
-    if ( !canPlace ) pane.append(h("p", { class: "pf-hint",
-      text: "Token placement is disabled: the map is off on this device (Lite mode) or no scene is viewed." }));
+    if ( !canPlace ) pane.append(h("p", { class: "pf-hint", text: t("TAPTABLE.PlacementDisabled") }));
     pane.append(list);
     return pane;
   }
@@ -1663,7 +1677,7 @@ class PocketShell extends foundry.applications.api.ApplicationV2 {
   static #onGmOpenActor(_event, target) {
     const actor = game.actors?.get(target.dataset.actorId);
     if ( !actor ) {
-      ui.notifications?.warn("TapTable: that actor no longer exists.");
+      ui.notifications?.warn(t("TAPTABLE.WarnActorGone"));
       return;
     }
     let result;
@@ -1704,7 +1718,7 @@ class PocketShell extends foundry.applications.api.ApplicationV2 {
    * @param {object} app  The topmost tracked sheet (topSheet()).
    */
   #buildSheetNav(app) {
-    const nav = h("nav", { class: "pf-nav pf-sheet-nav", "aria-label": "Sheet navigation" });
+    const nav = h("nav", { class: "pf-nav pf-sheet-nav", "aria-label": t("TAPTABLE.SheetNavLabel") });
     const el = elementOf(app);
     const rail = el?.querySelector("nav.tabs.tabs-right, nav.tabs.tabs-left, nav.tabs[data-group='primary']");
     if ( !rail ) {
@@ -1738,20 +1752,20 @@ class PocketShell extends foundry.applications.api.ApplicationV2 {
         type: "button",
         class: "pf-tab pf-sheet-add",
         "data-action": "pfSheetAdd",
-        "aria-label": `Add to ${addActor.name} from a compendium`
+        "aria-label": tf("TAPTABLE.AddToActor", { name: addActor.name })
       }, [
         h("i", { class: "fa-solid fa-plus", inert: true }),
-        h("span", { class: "pf-tab-label", text: "Add" })
+        h("span", { class: "pf-tab-label", text: t("TAPTABLE.Add") })
       ]));
     }
     nav.append(h("button", {
       type: "button",
       class: "pf-tab pf-sheet-close",
       "data-action": "pfSheetClose",
-      "aria-label": "Close the sheet"
+      "aria-label": t("TAPTABLE.CloseSheet")
     }, [
       h("i", { class: "fa-solid fa-circle-xmark", inert: true }),
-      h("span", { class: "pf-tab-label", text: "Close" })
+      h("span", { class: "pf-tab-label", text: t("TAPTABLE.Close") })
     ]));
     return nav;
   }
@@ -1813,7 +1827,7 @@ class PocketShell extends foundry.applications.api.ApplicationV2 {
       const sheetApp = topSheet();
       if ( sheetApp ) return this.#buildSheetNav(sheetApp);
     }
-    const nav = h("nav", { class: "pf-nav", "aria-label": "TapTable navigation" });
+    const nav = h("nav", { class: "pf-nav", "aria-label": t("TAPTABLE.NavLabel") });
     // v2: only section:"nav" registrations render here (no-section registrations
     // normalized to "nav" in registerTab — M2 behavior preserved); "modules"
     // entries render in the Mods pane instead.
@@ -1831,13 +1845,17 @@ class PocketShell extends foundry.applications.api.ApplicationV2 {
       }
       if ( !visible ) continue;
       const active = (this.#pane === tab.id) || ((tab.id === "board") && this.#boardActive);
+      // Labels are localized HERE, at render time (never when a tab registers at init
+      // — i18n is not loaded yet then). Built-in labels are TAPTABLE.* keys; a plain
+      // third-party string passes through game.i18n.localize unchanged.
+      const label = t(tab.label);
       const btn = h("button", {
         type: "button",
         class: `pf-tab${active ? " active" : ""}`,
         "data-action": "pfTab",
-        "aria-label": tab.label,
+        "aria-label": label,
         dataset: { tab: tab.id }
-      }, [h("i", { class: tab.icon, inert: true }), h("span", { class: "pf-tab-label", text: tab.label })]);
+      }, [h("i", { class: tab.icon, inert: true }), h("span", { class: "pf-tab-label", text: label })]);
       nav.append(btn);
     }
     return nav;
@@ -1905,8 +1923,7 @@ class PocketShell extends foundry.applications.api.ApplicationV2 {
     const pane = h("section", { class: "pf-pane", dataset: { pane: "home" } });
     const actor = game.user?.character;
     if ( !actor ) {
-      pane.append(h("p", { class: "pf-empty",
-        text: "No character is assigned to this user. Ask the GM to set one on your player, then reload." }));
+      pane.append(h("p", { class: "pf-empty", text: t("TAPTABLE.HomeNoCharacter") }));
       return pane;
     }
     pane.append(h("h2", { class: "pf-pane-title", text: actor.name }));
@@ -1916,26 +1933,28 @@ class PocketShell extends foundry.applications.api.ApplicationV2 {
     const vitals = resolveAdapter().getVitals(actor);
     if ( vitals?.hp && (typeof vitals.hp.value === "number") && (typeof vitals.hp.max === "number") ) {
       // HP quick-strip: +/- adjust via resolveAdapter().adjustHp (see #onHpDelta).
-      const label = `${vitals.hp.value} / ${vitals.hp.max}` + (vitals.hp.temp ? ` (+${vitals.hp.temp} temp)` : "");
+      const label = vitals.hp.temp
+        ? tf("TAPTABLE.HpValueTemp", { value: vitals.hp.value, max: vitals.hp.max, temp: vitals.hp.temp })
+        : tf("TAPTABLE.ValueOfMax", { value: vitals.hp.value, max: vitals.hp.max });
       pane.append(h("div", { class: "pf-row pf-hp" }, [
-        h("span", { class: "pf-row-label", text: "HP" }),
+        h("span", { class: "pf-row-label", text: t("TAPTABLE.HP") }),
         h("button", { type: "button", class: "pf-btn", "data-action": "pfHpDelta",
-          "aria-label": "Lose 1 HP", dataset: { delta: "-1" }, text: "−" }),
+          "aria-label": t("TAPTABLE.LoseHp"), dataset: { delta: "-1" }, text: "−" }),
         h("span", { class: "pf-hp-value", text: label }),
         h("button", { type: "button", class: "pf-btn", "data-action": "pfHpDelta",
-          "aria-label": "Gain 1 HP", dataset: { delta: "1" }, text: "+" })
+          "aria-label": t("TAPTABLE.GainHp"), dataset: { delta: "1" }, text: "+" })
       ]));
     }
     if ( vitals?.hitDice && (typeof vitals.hitDice.value === "number") ) {
       pane.append(h("div", { class: "pf-row" }, [
-        h("span", { class: "pf-row-label", text: "Hit Dice" }),
-        h("span", { text: `${vitals.hitDice.value} / ${vitals.hitDice.max ?? "?"}` })
+        h("span", { class: "pf-row-label", text: t("TAPTABLE.HitDice") }),
+        h("span", { text: tf("TAPTABLE.ValueOfMax", { value: vitals.hitDice.value, max: vitals.hitDice.max ?? "?" }) })
       ]));
     }
     if ( vitals?.death && (typeof vitals.death.success === "number") && (typeof vitals.death.failure === "number") ) {
       pane.append(h("div", { class: "pf-row" }, [
-        h("span", { class: "pf-row-label", text: "Death Saves" }),
-        h("span", { text: `✓ ${vitals.death.success}  ✗ ${vitals.death.failure}` })
+        h("span", { class: "pf-row-label", text: t("TAPTABLE.DeathSaves") }),
+        h("span", { text: tf("TAPTABLE.DeathSavesValue", { success: vitals.death.success, failure: vitals.death.failure }) })
       ]));
     }
 
@@ -1944,14 +1963,14 @@ class PocketShell extends foundry.applications.api.ApplicationV2 {
     // hidden. Activation routes back through resolveAdapter().useFavorite (#onFavorite).
     const favorites = resolveAdapter().getFavorites(actor);
     if ( favorites.length ) {
-      pane.append(h("h3", { class: "pf-section-title", text: "Favorites" }));
+      pane.append(h("h3", { class: "pf-section-title", text: t("TAPTABLE.Favorites") }));
       const list = h("div", { class: "pf-favorites" });
       for ( const fav of favorites ) {
         list.append(h("button", {
           type: "button",
           class: "pf-favorite",
           "data-action": "pfFavorite",
-          "aria-label": `Use ${fav.name}`,
+          "aria-label": tf("TAPTABLE.UseFavorite", { name: fav.name }),
           dataset: { favoriteId: fav.id }
         }, [
           fav.img ? h("img", { src: fav.img, alt: "", loading: "lazy" }) : null,
@@ -1981,7 +2000,7 @@ class PocketShell extends foundry.applications.api.ApplicationV2 {
     let doc = null;
     try { doc = fromUuidSync(target.dataset.favoriteId, { relative: actor }); } catch(err) { /* handled below */ }
     if ( !doc ) {
-      ui.notifications?.warn("TapTable: that favorite could not be resolved anymore.");
+      ui.notifications?.warn(t("TAPTABLE.WarnFavoriteUnresolved"));
       return;
     }
     Promise.resolve(resolveAdapter().useFavorite(doc))
@@ -1994,25 +2013,26 @@ class PocketShell extends foundry.applications.api.ApplicationV2 {
 
   #buildSettingsPane() {
     const pane = h("section", { class: "pf-pane", dataset: { pane: "settings" } });
-    pane.append(h("h2", { class: "pf-pane-title", text: "TapTable" }));
+    pane.append(h("h2", { class: "pf-pane-title", text: t("TAPTABLE.SettingsTitle") }));
 
     // Mode selector — binds the existing client setting taptable.mode.
     let mode = "auto";
     try { mode = game.settings.get(MODULE_ID, "mode"); } catch(err) { /* keep default */ }
-    const select = h("select", { "data-pf": "mode", "aria-label": "TapTable mode" });
-    for ( const [value, label] of Object.entries({ auto: "Auto-detect", phone: "Force phone UI", off: "Off" }) ) {
+    const select = h("select", { "data-pf": "mode", "aria-label": t("TAPTABLE.ModeSelect") });
+    for ( const [value, label] of Object.entries({ auto: t("TAPTABLE.ModeChoiceAuto"),
+      phone: t("TAPTABLE.SettingModeChoicePhone"), off: t("TAPTABLE.SettingModeChoiceOff") }) ) {
       select.append(h("option", { value, selected: value === mode, text: label }));
     }
     pane.append(h("div", { class: "pf-row" }, [
-      h("span", { class: "pf-row-label", text: "Mode" }), select
+      h("span", { class: "pf-row-label", text: t("TAPTABLE.Mode") }), select
     ]));
 
     // Lite mode — core.noCanvas (client, requiresReload; game.mjs:1209-1216).
     let lite = false;
     try { lite = !!game.settings.get("core", "noCanvas"); } catch(err) { /* keep default */ }
     pane.append(h("div", { class: "pf-row" }, [
-      h("span", { class: "pf-row-label", text: "Lite mode (no map)" }),
-      h("input", { type: "checkbox", "data-pf": "lite", checked: lite, "aria-label": "Toggle Lite mode" })
+      h("span", { class: "pf-row-label", text: t("TAPTABLE.LiteModeLabel") }),
+      h("input", { type: "checkbox", "data-pf": "lite", checked: lite, "aria-label": t("TAPTABLE.LiteModeToggle") })
     ]));
 
     // Battery-saver graphics profile (consented, client-scoped, never silent).
@@ -2020,16 +2040,16 @@ class PocketShell extends foundry.applications.api.ApplicationV2 {
     try { consent = !!game.settings.get(MODULE_ID, CONSENT_SETTING); } catch(err) { /* keep default */ }
     pane.append(h("div", { class: "pf-row" }, [
       h("button", { type: "button", class: "pf-btn pf-wide", "data-action": "pfPerfProfile",
-        text: "Apply battery-saver graphics profile" })
+        text: t("TAPTABLE.PerfProfileButton") })
     ]));
     pane.append(h("p", { class: "pf-hint", text: consent
-      ? "Consent recorded on this device — tapping applies without re-asking. Resolution scaling fully applies after the next reload."
-      : "Asks once, then sets LOW performance mode, 30 FPS cap, mipmaps on, resolution scaling off — this device only." }));
+      ? t("TAPTABLE.PerfProfileConsented")
+      : t("TAPTABLE.PerfProfileAsk") }));
 
     // Free map memory: enable Lite + confirm + reload.
     pane.append(h("div", { class: "pf-row" }, [
       h("button", { type: "button", class: "pf-btn pf-wide", "data-action": "pfFreeMemory",
-        text: "Free map memory (Lite + reload)" })
+        text: t("TAPTABLE.FreeMemoryButton") })
     ]));
 
     // 233-1: GM-only Configuration section — a mobile route into Foundry/module
@@ -2061,15 +2081,14 @@ class PocketShell extends foundry.applications.api.ApplicationV2 {
    * @param {HTMLElement} pane  The Settings pane section being built.
    */
   #buildConfigSection(pane) {
-    pane.append(h("h3", { class: "pf-section-title", text: "Configuration" }));
-    pane.append(h("p", { class: "pf-hint",
-      text: "GM tools: open Foundry and module configuration on this device — for example to paste API keys." }));
+    pane.append(h("h3", { class: "pf-section-title", text: t("TAPTABLE.Configuration") }));
+    pane.append(h("p", { class: "pf-hint", text: t("TAPTABLE.ConfigHint") }));
 
     // Configure Settings -> core SettingsConfig, opened fullscreen via the shell.
     pane.append(h("div", { class: "pf-row" }, [
       h("button", { type: "button", class: "pf-btn pf-wide", "data-action": "pfOpenSettings" }, [
         h("i", { class: "fa-solid fa-gears", inert: true }),
-        h("span", { text: "Configure Settings" })
+        h("span", { text: t("TAPTABLE.ConfigureSettings") })
       ])
     ]));
 
@@ -2089,8 +2108,7 @@ class PocketShell extends foundry.applications.api.ApplicationV2 {
       ]));
     }
     if ( !list.childElementCount ) {
-      list.append(h("p", { class: "pf-empty",
-        text: "No configuration menus are available to open here." }));
+      list.append(h("p", { class: "pf-empty", text: t("TAPTABLE.ConfigEmpty") }));
     }
     pane.append(list);
   }
@@ -2145,7 +2163,7 @@ class PocketShell extends foundry.applications.api.ApplicationV2 {
     }
     if ( !app ) {
       console.warn(`${MODULE_ID} | shell: core SettingsConfig is unavailable (core API drift?).`);
-      ui.notifications?.warn("TapTable: could not open the settings configuration (see console).");
+      ui.notifications?.warn(t("TAPTABLE.WarnSettingsOpenFailed"));
       return;
     }
     let result;
@@ -2153,7 +2171,7 @@ class PocketShell extends foundry.applications.api.ApplicationV2 {
       result = app.render(true);
     } catch(err) {
       console.warn(`${MODULE_ID} | shell: SettingsConfig render failed.`, err);
-      ui.notifications?.warn("TapTable: could not open the settings configuration (see console).");
+      ui.notifications?.warn(t("TAPTABLE.WarnSettingsOpenFailed"));
       return;
     }
     if ( result && (typeof result.then === "function") ) {
@@ -2186,7 +2204,7 @@ class PocketShell extends foundry.applications.api.ApplicationV2 {
     const menu = game.settings?.menus?.get?.(key);
     if ( typeof menu?.type !== "function" ) {
       console.warn(`${MODULE_ID} | shell: setting menu "${key}" is no longer available.`);
-      ui.notifications?.warn("TapTable: that settings menu is no longer available.");
+      ui.notifications?.warn(t("TAPTABLE.WarnMenuGone"));
       return;
     }
     let app;
@@ -2194,7 +2212,7 @@ class PocketShell extends foundry.applications.api.ApplicationV2 {
       app = new menu.type();
     } catch(err) {
       console.warn(`${MODULE_ID} | shell: setting menu "${key}" failed to construct.`, err);
-      ui.notifications?.warn("TapTable: could not open that settings menu (see console).");
+      ui.notifications?.warn(t("TAPTABLE.WarnMenuOpenFailed"));
       return;
     }
     const isV2 = app instanceof foundry.applications.api.ApplicationV2;
@@ -2212,7 +2230,7 @@ class PocketShell extends foundry.applications.api.ApplicationV2 {
     } catch(err) {
       if ( hookId !== null ) Hooks.off("renderApplication", hookId);
       console.warn(`${MODULE_ID} | shell: setting menu "${key}" failed to open.`, err);
-      ui.notifications?.warn("TapTable: could not open that settings menu (see console).");
+      ui.notifications?.warn(t("TAPTABLE.WarnMenuOpenFailed"));
       return;
     }
     if ( isV2 ) {
@@ -2240,9 +2258,9 @@ class PocketShell extends foundry.applications.api.ApplicationV2 {
   async #onLiteChange(event) {
     const input = event.currentTarget;
     const want = input.checked;
-    const ok = await pfConfirm("Lite mode", want
-      ? "<p>Lite mode turns the game map (canvas) off on this device to save memory and battery. Chat, sheets and combat keep working. Reload now?</p>"
-      : "<p>Turn the game map back on for this device and reload?</p>");
+    const ok = await pfConfirm(t("TAPTABLE.LiteModeTitle"), want
+      ? t("TAPTABLE.LiteModeOnContent")
+      : t("TAPTABLE.LiteModeOffContent"));
     if ( !ok ) { input.checked = !want; return; }
     try {
       await game.settings.set("core", "noCanvas", want);
@@ -2258,11 +2276,7 @@ class PocketShell extends foundry.applications.api.ApplicationV2 {
     let consent = false;
     try { consent = !!game.settings.get(MODULE_ID, CONSENT_SETTING); } catch(err) { /* treat as not consented */ }
     if ( !consent ) {
-      const ok = await pfConfirm("Battery-saver graphics profile",
-        "<p>Apply the battery-saver graphics profile on this device only? It sets:</p>"
-        + "<ul><li>Performance mode: <strong>Low</strong></li><li>Framerate cap: <strong>30 FPS</strong></li>"
-        + "<li>Mipmap antialiasing: <strong>on</strong></li><li>Resolution scaling: <strong>off</strong></li></ul>"
-        + "<p>Your consent is remembered on this device and you will not be asked again.</p>");
+      const ok = await pfConfirm(t("TAPTABLE.PerfProfileTitle"), t("TAPTABLE.PerfProfileContent"));
       if ( !ok ) return;
       try {
         await game.settings.set(MODULE_ID, CONSENT_SETTING, true);
@@ -2272,13 +2286,12 @@ class PocketShell extends foundry.applications.api.ApplicationV2 {
       }
     }
     await applyPerfProfile();
-    ui.notifications?.info("TapTable: battery-saver graphics profile applied.");
+    ui.notifications?.info(t("TAPTABLE.InfoPerfApplied"));
     this.render();
   }
 
   static async #onFreeMemory() {
-    const ok = await pfConfirm("Free map memory",
-      "<p>This enables Lite mode (map off, this device only) and reloads to release map memory. Chat, sheets and combat keep working.</p>");
+    const ok = await pfConfirm(t("TAPTABLE.FreeMemoryTitle"), t("TAPTABLE.FreeMemoryContent"));
     if ( !ok ) return;
     try {
       await game.settings.set("core", "noCanvas", true);
@@ -2295,27 +2308,30 @@ class PocketShell extends foundry.applications.api.ApplicationV2 {
 /* -------------------------------------------- */
 
 function registerBuiltinTabs() {
-  registerTab({ id: "home", icon: "fa-solid fa-house", label: "Home", order: 10,
+  // TIMING: this runs at init, BEFORE i18n has loaded translations (i18nInit), so the
+  // registry stores the localization KEYS. They are resolved to text at render time —
+  // #buildNav / #buildModsPane call game.i18n.localize on each label — never here.
+  registerTab({ id: "home", icon: "fa-solid fa-house", label: "TAPTABLE.TabHome", order: 10,
     open: ({ shell: s }) => s?.togglePane("home") });
-  registerTab({ id: "board", icon: "fa-solid fa-map", label: "Board", order: 15,
+  registerTab({ id: "board", icon: "fa-solid fa-map", label: "TAPTABLE.TabBoard", order: 15,
     open: ({ shell: s }) => s?.toggleBoard() });
-  registerTab({ id: "sheet", icon: "fa-solid fa-user", label: "Sheet", order: 20,
+  registerTab({ id: "sheet", icon: "fa-solid fa-user", label: "TAPTABLE.TabSheet", order: 20,
     visible: () => !!game.user?.character,
     open: () => game.user.character?.sheet?.render(true) });
-  registerTab({ id: "roller", icon: "fa-solid fa-dice", label: "Roller", order: 25,
+  registerTab({ id: "roller", icon: "fa-solid fa-dice", label: "TAPTABLE.TabRoller", order: 25,
     open: ({ shell: s }) => s?.togglePane("roller") });
-  registerTab({ id: "chat", icon: "fa-solid fa-comments", label: "Chat", order: 30,
+  registerTab({ id: "chat", icon: "fa-solid fa-comments", label: "TAPTABLE.TabChat", order: 30,
     open: () => ui.chat?.renderPopout() });
-  registerTab({ id: "combat", icon: "fa-solid fa-swords", label: "Combat", order: 40,
+  registerTab({ id: "combat", icon: "fa-solid fa-swords", label: "TAPTABLE.TabCombat", order: 40,
     open: () => ui.combat?.renderPopout() });
   // 236-2: macro hotbar drawer — a shell-owned pane listing the user's hotbar macros
   // as tap-to-run rows. Pane-toggle tab exactly like Home/Roller/Mods (open() returns
   // no application, so #activateTab just toggles the pane).
-  registerTab({ id: "macros", icon: "fa-solid fa-scroll", label: "Macros", order: 42,
+  registerTab({ id: "macros", icon: "fa-solid fa-scroll", label: "TAPTABLE.TabMacros", order: 42,
     open: ({ shell: s }) => s?.togglePane("macros") });
-  registerTab({ id: "mods", icon: "fa-solid fa-cubes", label: "Mods", order: 45,
+  registerTab({ id: "mods", icon: "fa-solid fa-cubes", label: "TAPTABLE.TabMods", order: 45,
     open: ({ shell: s }) => s?.togglePane("mods") });
-  registerTab({ id: "settings", icon: "fa-solid fa-gear", label: "Settings", order: 50,
+  registerTab({ id: "settings", icon: "fa-solid fa-gear", label: "TAPTABLE.TabSettings", order: 50,
     open: ({ shell: s }) => s?.togglePane("settings") });
 }
 
@@ -2330,8 +2346,10 @@ function registerBuiltinTabs() {
 export function initShell() {
   if ( !document.body?.classList.contains("pf-mobile") ) return;
 
+  // name is a bare localization key — Foundry localizes it lazily (config:false, so
+  // it is only ever seen through introspection, but keep it translatable anyway).
   game.settings.register(MODULE_ID, CONSENT_SETTING, {
-    name: "Battery-saver profile consent recorded",
+    name: "TAPTABLE.SettingConsentName",
     scope: "client",
     config: false,
     type: Boolean,

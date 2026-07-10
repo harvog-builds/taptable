@@ -26,7 +26,12 @@ import { resolveAdapter } from "./adapter-registry.js";
 
 const MODULE_ID = "taptable";
 
-/** Dice offered by the manual builder. */
+/** Localize / format a TAPTABLE.* key. Defined at module scope but only ever CALLED
+ *  at render time or inside tap handlers (post-i18nInit) — never at module scope. */
+const t = key => game.i18n.localize(key);
+const tf = (key, data) => game.i18n.format(key, data);
+
+/** Dice offered by the manual builder (dice notation — not localized). */
 const DICE = ["d4", "d6", "d8", "d10", "d12", "d20", "d100"];
 
 /** Stepper bounds — keep phone-built formulas sane. */
@@ -131,7 +136,7 @@ function rollActor() {
 async function executeActorRoll(kind, key, shell) {
   const actor = rollActor();
   if ( !actor ) {
-    ui.notifications?.warn("TapTable: no actor to roll for.");
+    ui.notifications?.warn(t("TAPTABLE.WarnNoRollActor"));
     return;
   }
   try {
@@ -139,7 +144,7 @@ async function executeActorRoll(kind, key, shell) {
     snapToChat(shell);
   } catch(err) {
     console.warn(`${MODULE_ID} | roller: ${kind} roll for "${key}" failed (system adapter API drift?).`, err);
-    ui.notifications?.warn("TapTable: the roll failed (see console).");
+    ui.notifications?.warn(t("TAPTABLE.WarnRollFailed"));
   }
 }
 
@@ -170,9 +175,10 @@ function manualFormula() {
  */
 async function executeManualRoll(shell) {
   const formula = manualFormula();
-  let flavor = `Quick Roll: ${state.count}${state.die}`;
-  if ( (state.die === "d20") && (state.advMode === 1) ) flavor += " (Advantage)";
-  else if ( (state.die === "d20") && (state.advMode === -1) ) flavor += " (Disadvantage)";
+  const dice = `${state.count}${state.die}`;
+  let flavor = tf("TAPTABLE.QuickRollFlavor", { formula: dice });
+  if ( (state.die === "d20") && (state.advMode === 1) ) flavor = tf("TAPTABLE.QuickRollFlavorAdv", { formula: dice });
+  else if ( (state.die === "d20") && (state.advMode === -1) ) flavor = tf("TAPTABLE.QuickRollFlavorDis", { formula: dice });
   try {
     const actor = rollActor();
     const speaker = ChatMessage.getSpeaker(actor ? { actor } : {});
@@ -181,7 +187,7 @@ async function executeManualRoll(shell) {
     snapToChat(shell);
   } catch(err) {
     console.warn(`${MODULE_ID} | roller: manual roll "${formula}" failed.`, err);
-    ui.notifications?.warn("TapTable: the roll failed (see console).");
+    ui.notifications?.warn(t("TAPTABLE.WarnRollFailed"));
   }
 }
 
@@ -221,7 +227,7 @@ export function buildRollerPane(shell) {
   // Belt and braces: the shell never renders on desktop (initShell early-return),
   // but keep the module's activation contract locally visible too.
   if ( !document.body?.classList.contains("pf-mobile") ) return pane;
-  pane.append(h("h2", { class: "pf-pane-title", text: "Quick Roll" }));
+  pane.append(h("h2", { class: "pf-pane-title", text: t("TAPTABLE.QuickRoll") }));
   buildBuilder(pane, shell);
   if ( game.user?.isGM ) buildGMSection(pane, shell);
   else buildPlayerSection(pane, shell);
@@ -231,12 +237,12 @@ export function buildRollerPane(shell) {
 /** The manual builder: die picker, count stepper, roll mode, modifier stepper, Roll. */
 function buildBuilder(pane, shell) {
   // Die picker.
-  const dice = h("div", { class: "pf-dice", role: "group", "aria-label": "Die picker" });
+  const dice = h("div", { class: "pf-dice", role: "group", "aria-label": t("TAPTABLE.DiePicker") });
   for ( const die of DICE ) {
     const btn = h("button", {
       type: "button",
       class: `pf-die${state.die === die ? " active" : ""}`,
-      "aria-label": `Use ${die}`,
+      "aria-label": tf("TAPTABLE.UseDie", { die }),
       "aria-pressed": state.die === die ? "true" : "false",
       text: die
     });
@@ -247,7 +253,7 @@ function buildBuilder(pane, shell) {
 
   // Count stepper (default 1).
   pane.append(stepperRow(shell, {
-    label: "Count",
+    label: t("TAPTABLE.Count"),
     get: () => state.count,
     set: v => { state.count = v; },
     min: COUNT_MIN, max: COUNT_MAX,
@@ -255,8 +261,8 @@ function buildBuilder(pane, shell) {
   }));
 
   // Roll mode: Advantage / Normal / Disadvantage.
-  const advGroup = h("div", { class: "pf-adv-group", role: "group", "aria-label": "Roll mode" });
-  for ( const [label, mode] of [["Advantage", 1], ["Normal", 0], ["Disadvantage", -1]] ) {
+  const advGroup = h("div", { class: "pf-adv-group", role: "group", "aria-label": t("TAPTABLE.RollMode") });
+  for ( const [label, mode] of [[t("TAPTABLE.Advantage"), 1], [t("TAPTABLE.Normal"), 0], [t("TAPTABLE.Disadvantage"), -1]] ) {
     const btn = h("button", {
       type: "button",
       class: `pf-adv${state.advMode === mode ? " active" : ""}`,
@@ -271,7 +277,7 @@ function buildBuilder(pane, shell) {
 
   // Manual modifier stepper (+/- N).
   pane.append(stepperRow(shell, {
-    label: "Modifier",
+    label: t("TAPTABLE.Modifier"),
     get: () => state.modifier,
     set: v => { state.modifier = v; },
     min: MOD_MIN, max: MOD_MAX,
@@ -279,11 +285,12 @@ function buildBuilder(pane, shell) {
   }));
 
   // Manual roll — the only builder control that actually rolls.
+  const rollLabel = tf("TAPTABLE.RollFormula", { formula: manualFormula() });
   const rollBtn = h("button", {
     type: "button",
     class: "pf-btn pf-wide pf-roll-manual",
-    "aria-label": `Roll ${manualFormula()}`,
-    text: `Roll ${manualFormula()}`
+    "aria-label": rollLabel,
+    text: rollLabel
   });
   rollBtn.addEventListener("click", () => executeManualRoll(shell));
   pane.append(h("div", { class: "pf-row" }, [rollBtn]));
@@ -292,9 +299,9 @@ function buildBuilder(pane, shell) {
 /** A labeled −/value/+ stepper row (≥44px targets via the shared .pf-btn/.pf-row CSS). */
 function stepperRow(shell, { label, get, set, min, max, fmt }) {
   const minus = h("button", { type: "button", class: "pf-btn",
-    "aria-label": `Decrease ${label.toLowerCase()}`, text: "−" });
+    "aria-label": tf("TAPTABLE.DecreaseLabel", { label: label.toLowerCase() }), text: "−" });
   const plus = h("button", { type: "button", class: "pf-btn",
-    "aria-label": `Increase ${label.toLowerCase()}`, text: "+" });
+    "aria-label": tf("TAPTABLE.IncreaseLabel", { label: label.toLowerCase() }), text: "+" });
   const value = h("span", { class: "pf-roller-value", dataset: { value: String(get()) }, text: fmt(get()) });
   minus.addEventListener("click", () => { set(Math.max(min, get() - 1)); shell.render(); });
   plus.addEventListener("click", () => { set(Math.min(max, get() + 1)); shell.render(); });
@@ -307,10 +314,7 @@ function stepperRow(shell, { label, get, set, min, max, fmt }) {
 function buildPlayerSection(pane, shell) {
   const actor = game.user?.character;
   if ( !actor ) {
-    pane.append(h("p", { class: "pf-empty pf-roller-nochar",
-      text: "No character is assigned to this user, so ability, save and skill quick"
-        + " rolls are unavailable — the manual dice builder above still works."
-        + " Ask the GM to assign a character to your player, then reload." }));
+    pane.append(h("p", { class: "pf-empty pf-roller-nochar", text: t("TAPTABLE.RollerNoCharacter") }));
     return;
   }
   buildActorRollSection(pane, shell, actor);
@@ -325,12 +329,12 @@ function buildPlayerSection(pane, shell) {
  */
 function buildGMSection(pane, shell) {
   if ( !game.user?.isGM ) return;   // defense in depth — the caller already gates
-  pane.append(h("h3", { class: "pf-section-title", text: "Roll as…" }));
+  pane.append(h("h3", { class: "pf-section-title", text: t("TAPTABLE.RollAs") }));
 
   const entries = [];
   try {
     for ( const a of game.actors ?? [] ) {
-      entries.push({ id: a.id, name: a.name ?? "(unnamed)",
+      entries.push({ id: a.id, name: a.name ?? t("TAPTABLE.Unnamed"),
         img: a.img ?? "icons/svg/mystery-man.svg", type: a.type ?? "" });
     }
   } catch(err) {
@@ -343,8 +347,8 @@ function buildGMSection(pane, shell) {
   });
 
   const search = h("input", { type: "search", class: "pf-gm-search pf-roller-search",
-    value: state.gmSearch, placeholder: `Search ${entries.length} actors…`,
-    "aria-label": "Search actors to roll as", autocomplete: "off", spellcheck: "false" });
+    value: state.gmSearch, placeholder: tf("TAPTABLE.SearchActorsPlaceholder", { count: entries.length }),
+    "aria-label": t("TAPTABLE.SearchActorsRollAs"), autocomplete: "off", spellcheck: "false" });
   const list = h("div", { class: "pf-gm-actors pf-roller-actors" });
   const currentId = rollActor()?.id ?? null;
   const renderRows = () => {
@@ -356,7 +360,7 @@ function buildGMSection(pane, shell) {
       const row = h("button", {
         type: "button",
         class: `pf-roller-pick${e.id === currentId ? " selected" : ""}`,
-        "aria-label": `Roll as ${e.name}`,
+        "aria-label": tf("TAPTABLE.RollAsActor", { name: e.name }),
         dataset: { actorId: e.id }
       }, [
         h("img", { src: e.img, alt: "", loading: "lazy" }),
@@ -366,9 +370,9 @@ function buildGMSection(pane, shell) {
       list.append(row);
     }
     if ( !matches.length ) {
-      list.append(h("p", { class: "pf-empty", text: "No actors match that search." }));
+      list.append(h("p", { class: "pf-empty", text: t("TAPTABLE.NoActorsMatch") }));
     } else if ( matches.length > shown.length ) {
-      list.append(h("p", { class: "pf-hint", text: `Showing ${shown.length} of ${matches.length} — type to narrow.` }));
+      list.append(h("p", { class: "pf-hint", text: tf("TAPTABLE.ShowingOf", { shown: shown.length, total: matches.length }) }));
     }
   };
   renderRows();
@@ -377,8 +381,7 @@ function buildGMSection(pane, shell) {
 
   const actor = rollActor();
   if ( actor ) buildActorRollSection(pane, shell, actor);
-  else pane.append(h("p", { class: "pf-empty",
-    text: "Select an actor above to roll with their modifiers — the manual dice builder works without one." }));
+  else pane.append(h("p", { class: "pf-empty", text: t("TAPTABLE.RollerSelectActor") }));
 }
 
 /**
@@ -397,8 +400,7 @@ function buildActorRollSection(pane, shell, actor) {
   const rollables = resolveAdapter().getRollables(actor);
   const sections = Array.isArray(rollables?.sections) ? rollables.sections : [];
   if ( !sections.length ) {
-    pane.append(h("p", { class: "pf-empty",
-      text: `No quick rolls are available for ${actor.name} on this game system — the manual dice builder above still works.` }));
+    pane.append(h("p", { class: "pf-empty", text: tf("TAPTABLE.RollerNoRollables", { name: actor.name }) }));
     return;
   }
 
@@ -413,7 +415,7 @@ function buildActorRollSection(pane, shell, actor) {
       grid.append(rollButton({
         label: entry.label,
         mod: entry.mod,
-        aria: `Roll ${entry.name ?? entry.label} for ${actor.name}`,
+        aria: tf("TAPTABLE.RollForActor", { roll: entry.name ?? entry.label, name: actor.name }),
         kind: section.kind, key: entry.key, shell
       }));
     }

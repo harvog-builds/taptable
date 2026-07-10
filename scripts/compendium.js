@@ -38,6 +38,12 @@ import { resolveAdapter } from "./adapter-registry.js";
 
 const MODULE_ID = "taptable";
 
+/** Localize / format a TAPTABLE.* key. Defined at module scope but only ever CALLED
+ *  from openCompendiumPicker and its handlers (user-tap time, post-i18nInit) —
+ *  never at module scope. */
+const t = key => game.i18n.localize(key);
+const tf = (key, data) => game.i18n.format(key, data);
+
 /** Overlay element id (singleton — a second open replaces the first). */
 const OVERLAY_ID = "pf-compendium";
 
@@ -68,7 +74,7 @@ function resolveCategories() {
     if ( Array.isArray(dt) ) types = dt.filter(t => t && (t !== "base"));
     else if ( dt && (typeof dt === "object") ) types = Object.keys(dt).filter(t => t && (t !== "base"));
   } catch(err) { /* empty list = match all items */ }
-  return [{ id: "items", label: "Items", types }];
+  return [{ id: "items", label: t("TAPTABLE.CategoryItems"), types }];
 }
 
 /* -------------------------------------------- */
@@ -161,7 +167,7 @@ async function collectEntries(types) {
       if ( !uuid ) continue;
       out.push({
         uuid,
-        name: entry.name ?? "(unnamed)",
+        name: entry.name ?? t("TAPTABLE.Unnamed"),
         img: entry.img || "icons/svg/item-bag.svg",
         pack: label,
         type: entry.type
@@ -209,11 +215,11 @@ async function pfConfirm(title, html) {
  */
 async function confirmAndAdd(actor, entry, onAdded) {
   if ( !actor?.isOwner ) {   // defense in depth; open already gated on ownership
-    ui.notifications?.warn("TapTable: you can only add items to a character you own.");
+    ui.notifications?.warn(t("TAPTABLE.WarnOwnOnly"));
     return;
   }
-  const ok = await pfConfirm("Add to character",
-    `<p>Add <strong>${escapeHtml(entry.name)}</strong> to <strong>${escapeHtml(actor.name)}</strong>?</p>`);
+  const ok = await pfConfirm(t("TAPTABLE.AddToCharacterTitle"),
+    tf("TAPTABLE.AddToCharacterContent", { item: escapeHtml(entry.name), actor: escapeHtml(actor.name) }));
   if ( !ok ) return;
 
   let doc = null;
@@ -223,18 +229,18 @@ async function confirmAndAdd(actor, entry, onAdded) {
     console.warn(`${MODULE_ID} | compendium: fromUuid("${entry.uuid}") failed.`, err);
   }
   if ( !doc || (typeof doc.toObject !== "function") ) {
-    ui.notifications?.warn(`TapTable: "${entry.name}" could not be resolved from its compendium.`);
+    ui.notifications?.warn(tf("TAPTABLE.WarnEntryUnresolved", { name: entry.name }));
     return;
   }
   try {
     const created = await actor.createEmbeddedDocuments("Item", [doc.toObject()]);
     if ( created?.length ) {
-      ui.notifications?.info(`TapTable: added ${entry.name} to ${actor.name}.`);
+      ui.notifications?.info(tf("TAPTABLE.InfoItemAdded", { item: entry.name, actor: actor.name }));
       onAdded?.();
     }
   } catch(err) {
     console.warn(`${MODULE_ID} | compendium: createEmbeddedDocuments failed.`, err);
-    ui.notifications?.warn(`TapTable: could not add ${entry.name} (see console).`);
+    ui.notifications?.warn(tf("TAPTABLE.WarnAddFailed", { name: entry.name }));
   }
 }
 
@@ -253,11 +259,11 @@ export async function openCompendiumPicker(actor) {
   if ( !document.body?.classList.contains("pf-mobile") ) return;
 
   if ( !actor ) {
-    ui.notifications?.warn("TapTable: no character to add items to.");
+    ui.notifications?.warn(t("TAPTABLE.WarnNoCharacterToAdd"));
     return;
   }
   if ( !actor.isOwner ) {
-    ui.notifications?.warn("TapTable: you can only add items to a character you own.");
+    ui.notifications?.warn(t("TAPTABLE.WarnOwnOnly"));
     return;
   }
 
@@ -268,24 +274,24 @@ export async function openCompendiumPicker(actor) {
   const categories = resolveCategories();
   const session = { category: categories[0].id, search: "", entries: [], loading: true, gen: 0 };
 
-  const overlay = h("div", { id: OVERLAY_ID, role: "dialog", "aria-label": "Add from compendium" });
+  const overlay = h("div", { id: OVERLAY_ID, role: "dialog", "aria-label": t("TAPTABLE.PickerLabel") });
   const panel = h("div", { class: "pf-compendium-panel" });
 
   const close = () => { try { overlay.remove(); } catch(err) { /* already gone */ } };
 
   // Head: title + Close.
-  const closeBtn = h("button", { type: "button", class: "pf-compendium-close", "aria-label": "Close the picker" }, [
+  const closeBtn = h("button", { type: "button", class: "pf-compendium-close", "aria-label": t("TAPTABLE.ClosePicker") }, [
     h("i", { class: "fa-solid fa-xmark", inert: true }),
-    h("span", { text: "Close" })
+    h("span", { text: t("TAPTABLE.Close") })
   ]);
   closeBtn.addEventListener("click", close);
   panel.append(h("div", { class: "pf-compendium-head" }, [
-    h("h2", { class: "pf-pane-title", text: `Add to ${actor.name}` }),
+    h("h2", { class: "pf-pane-title", text: tf("TAPTABLE.AddToActorTitle", { name: actor.name }) }),
     closeBtn
   ]));
 
   // Category selector.
-  const cats = h("div", { class: "pf-compendium-cats", role: "group", "aria-label": "Category" });
+  const cats = h("div", { class: "pf-compendium-cats", role: "group", "aria-label": t("TAPTABLE.Category") });
   for ( const cat of categories ) {
     const btn = h("button", {
       type: "button",
@@ -300,8 +306,8 @@ export async function openCompendiumPicker(actor) {
 
   // Search input.
   const search = h("input", {
-    type: "search", class: "pf-compendium-search", placeholder: "Search…",
-    "aria-label": "Search compendium entries", autocomplete: "off", spellcheck: "false"
+    type: "search", class: "pf-compendium-search", placeholder: t("TAPTABLE.SearchPlaceholder"),
+    "aria-label": t("TAPTABLE.SearchCompendium"), autocomplete: "off", spellcheck: "false"
   });
   panel.append(search);
 
@@ -325,7 +331,7 @@ export async function openCompendiumPicker(actor) {
       const row = h("button", {
         type: "button",
         class: "pf-compendium-row",
-        "aria-label": `Add ${e.name} (${e.pack})`,
+        "aria-label": tf("TAPTABLE.AddEntry", { name: e.name, pack: e.pack }),
         dataset: { uuid: e.uuid }
       }, [
         h("img", { class: "pf-compendium-img", src: e.img, alt: "", loading: "lazy" }),
@@ -336,15 +342,14 @@ export async function openCompendiumPicker(actor) {
       results.append(row);
     }
     if ( session.loading ) {
-      results.append(h("p", { class: "pf-compendium-empty", text: "Loading compendium entries…" }));
+      results.append(h("p", { class: "pf-compendium-empty", text: t("TAPTABLE.CompendiumLoading") }));
     } else if ( !session.entries.length ) {
-      results.append(h("p", { class: "pf-compendium-empty",
-        text: "No visible compendiums have entries in this category." }));
+      results.append(h("p", { class: "pf-compendium-empty", text: t("TAPTABLE.CompendiumEmpty") }));
     } else if ( !matches.length ) {
-      results.append(h("p", { class: "pf-compendium-empty", text: "No entries match that search." }));
+      results.append(h("p", { class: "pf-compendium-empty", text: t("TAPTABLE.CompendiumNoMatch") }));
     } else if ( matches.length > shown.length ) {
       results.append(h("p", { class: "pf-compendium-hint",
-        text: `Showing ${shown.length} of ${matches.length} — type to narrow.` }));
+        text: tf("TAPTABLE.ShowingOf", { shown: shown.length, total: matches.length }) }));
     }
   };
 
