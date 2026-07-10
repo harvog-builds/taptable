@@ -34,6 +34,8 @@
  *    and every failure is surfaced through ui.notifications rather than thrown.
  */
 
+import { resolveAdapter } from "./adapter-registry.js";
+
 const MODULE_ID = "taptable";
 
 /** Overlay element id (singleton — a second open replaces the first). */
@@ -44,19 +46,30 @@ const OVERLAY_ID = "pf-compendium";
 const RESULT_RENDER_CAP = 40;
 
 /**
- * Category selector -> dnd5e Item subtypes, per the approved criteria. Order is
- * the display order of the category buttons.
- * @type {Array<{id:string, label:string, types:string[]}>}
+ * The category buttons for the picker: the active system adapter's Item taxonomy
+ * (resolveAdapter().getCompendiumCategories — the dnd5e adapter maps categories to
+ * Item subtypes), or a single generic "Items" bucket on a system with no adapter.
+ * A bucket with an empty `types` array matches EVERY Item (see collectEntries), so
+ * the generic bucket collects all items regardless of system. Each entry is
+ * {id, label, types:string[]}; order is the display order of the buttons.
+ * @returns {Array<{id:string, label:string, types:string[]}>}
  */
-const CATEGORIES = [
-  { id: "items",      label: "Items",      types: ["weapon", "equipment", "consumable", "tool", "loot", "container"] },
-  { id: "spells",     label: "Spells",     types: ["spell"] },
-  { id: "feats",      label: "Feats",      types: ["feat"] },
-  { id: "features",   label: "Features",   types: ["feat", "subclass"] },
-  { id: "species",    label: "Species",    types: ["race"] },
-  { id: "background", label: "Background", types: ["background"] },
-  { id: "class",      label: "Class",      types: ["class", "subclass"] }
-];
+function resolveCategories() {
+  let cats = null;
+  try { cats = resolveAdapter().getCompendiumCategories(); } catch(err) {
+    console.warn(`${MODULE_ID} | compendium: getCompendiumCategories failed; using a single generic bucket.`, err);
+  }
+  if ( Array.isArray(cats) && cats.length ) return cats;
+  // Generic fallback: one "Items" bucket. Derive concrete Item subtypes from the
+  // active system when exposed (nicer for a probe), else an empty list = match all.
+  let types = [];
+  try {
+    const dt = game.system?.documentTypes?.Item ?? game.documentTypes?.Item;
+    if ( Array.isArray(dt) ) types = dt.filter(t => t && (t !== "base"));
+    else if ( dt && (typeof dt === "object") ) types = Object.keys(dt).filter(t => t && (t !== "base"));
+  } catch(err) { /* empty list = match all items */ }
+  return [{ id: "items", label: "Items", types }];
+}
 
 /* -------------------------------------------- */
 /*  DOM helper (local copy of shell.js h())     */
@@ -115,13 +128,15 @@ function entryUuid(pack, entry) {
 }
 
 /**
- * Collect every index entry of the requested dnd5e Item subtypes across ALL
- * Item compendiums the current user can see. Read-only: getIndex() never writes.
- * @param {string[]} types  dnd5e Item subtypes for the active category.
+ * Collect every index entry of the requested Item subtypes across ALL Item
+ * compendiums the current user can see. An empty `types` list matches EVERY item
+ * (the generic single-bucket path). Read-only: getIndex() never writes.
+ * @param {string[]} types  Item subtypes for the active category ([] → all items).
  * @returns {Promise<Array<{uuid:string, name:string, img:string, pack:string, type:string}>>}
  */
 async function collectEntries(types) {
-  const wanted = new Set(types);
+  const wanted = new Set(types ?? []);
+  const matchAll = wanted.size === 0;
   const out = [];
   let packs = [];
   try { packs = [...(game.packs ?? [])]; } catch(err) {
@@ -141,7 +156,7 @@ async function collectEntries(types) {
     }
     const label = pack.metadata?.label ?? pack.metadata?.id ?? "";
     for ( const entry of index ?? [] ) {
-      if ( !wanted.has(entry?.type) ) continue;
+      if ( !matchAll && !wanted.has(entry?.type) ) continue;
       const uuid = entryUuid(pack, entry);
       if ( !uuid ) continue;
       out.push({
@@ -194,7 +209,7 @@ async function pfConfirm(title, html) {
  */
 async function confirmAndAdd(actor, entry, onAdded) {
   if ( !actor?.isOwner ) {   // defense in depth; open already gated on ownership
-    ui.notifications?.warn("Pocket Foundry: you can only add items to a character you own.");
+    ui.notifications?.warn("TapTable: you can only add items to a character you own.");
     return;
   }
   const ok = await pfConfirm("Add to character",
@@ -208,18 +223,18 @@ async function confirmAndAdd(actor, entry, onAdded) {
     console.warn(`${MODULE_ID} | compendium: fromUuid("${entry.uuid}") failed.`, err);
   }
   if ( !doc || (typeof doc.toObject !== "function") ) {
-    ui.notifications?.warn(`Pocket Foundry: "${entry.name}" could not be resolved from its compendium.`);
+    ui.notifications?.warn(`TapTable: "${entry.name}" could not be resolved from its compendium.`);
     return;
   }
   try {
     const created = await actor.createEmbeddedDocuments("Item", [doc.toObject()]);
     if ( created?.length ) {
-      ui.notifications?.info(`Pocket Foundry: added ${entry.name} to ${actor.name}.`);
+      ui.notifications?.info(`TapTable: added ${entry.name} to ${actor.name}.`);
       onAdded?.();
     }
   } catch(err) {
     console.warn(`${MODULE_ID} | compendium: createEmbeddedDocuments failed.`, err);
-    ui.notifications?.warn(`Pocket Foundry: could not add ${entry.name} (see console).`);
+    ui.notifications?.warn(`TapTable: could not add ${entry.name} (see console).`);
   }
 }
 
@@ -238,18 +253,20 @@ export async function openCompendiumPicker(actor) {
   if ( !document.body?.classList.contains("pf-mobile") ) return;
 
   if ( !actor ) {
-    ui.notifications?.warn("Pocket Foundry: no character to add items to.");
+    ui.notifications?.warn("TapTable: no character to add items to.");
     return;
   }
   if ( !actor.isOwner ) {
-    ui.notifications?.warn("Pocket Foundry: you can only add items to a character you own.");
+    ui.notifications?.warn("TapTable: you can only add items to a character you own.");
     return;
   }
 
   // Singleton: replace any picker already open.
   try { document.getElementById(OVERLAY_ID)?.remove(); } catch(err) { /* nothing to remove */ }
 
-  const session = { category: CATEGORIES[0].id, search: "", entries: [], loading: true, gen: 0 };
+  // Categories come from the active system adapter (or a generic single bucket).
+  const categories = resolveCategories();
+  const session = { category: categories[0].id, search: "", entries: [], loading: true, gen: 0 };
 
   const overlay = h("div", { id: OVERLAY_ID, role: "dialog", "aria-label": "Add from compendium" });
   const panel = h("div", { class: "pf-compendium-panel" });
@@ -269,7 +286,7 @@ export async function openCompendiumPicker(actor) {
 
   // Category selector.
   const cats = h("div", { class: "pf-compendium-cats", role: "group", "aria-label": "Category" });
-  for ( const cat of CATEGORIES ) {
+  for ( const cat of categories ) {
     const btn = h("button", {
       type: "button",
       class: `pf-compendium-cat${cat.id === session.category ? " active" : ""}`,
@@ -339,7 +356,7 @@ export async function openCompendiumPicker(actor) {
     session.loading = true;
     session.entries = [];
     renderResults();
-    const cat = CATEGORIES.find(c => c.id === session.category) ?? CATEGORIES[0];
+    const cat = categories.find(c => c.id === session.category) ?? categories[0];
     let collected = [];
     try {
       collected = await collectEntries(cat.types);

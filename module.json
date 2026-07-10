@@ -16,8 +16,8 @@
     "scripts/main.js"
   ],
   "styles": [
-    "styles/pf-core.css",
-    "styles/pf-dnd5e.css"
+    "styles/taptable-core.css",
+    "adapters/dnd5e.css"
   ],
   "license": "MIT"
 }

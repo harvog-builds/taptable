@@ -240,7 +240,7 @@ body.pf-mobile .dnd5e2.sheet.actor.character .sheet-body :is(.skills, .tools, .s
 }
 
 /* slide-toggle renders in light DOM (useShadowRoot=false, dnd5e.mjs:65309), so its
- * touch hit-area extension lives here rather than in the sheet5e.js shadow patch:
+ * touch hit-area extension lives here rather than in the adapter's shadow patch:
  * grow the vertical hit zone to 44px without moving the visuals. */
 body.pf-mobile .dnd5e2 slide-toggle {
   position: relative;
@@ -252,7 +252,8 @@ body.pf-mobile .dnd5e2 slide-toggle::after {
 }
 
 /* damage-application / effect-application chat trays render in light DOM (no static
- * CSS on 5.3.3 — see sheet5e.js header), so their touch sizing lives here. */
+ * CSS on 5.3.3 — see the dnd5e adapter's sheetTouchPatches header), so their touch
+ * sizing lives here. */
 body.pf-mobile :is(damage-application, effect-application) .card-tray > label {
   min-height: 44px;
 }
@@ -302,7 +303,7 @@ body.pf-mobile .dnd5e2.sheet.actor.character .pill-lg > button.config-button {
 /*    subtask 234-2). The dnd5e `damage-application` custom element   */
 /*    renders in LIGHT DOM — no shadow root (dnd5e.mjs:62850, frame   */
 /*    built at :62926-62950) — so plain CSS selectors reach every     */
-/*    control; no shadow-root patch (unlike sheet5e.js) is needed.    */
+/*    control; no shadow-root patch (unlike sheetTouchPatches) needed. */
 /*    Section 7 above already floors every                            */
 /*    `:is(damage-application, effect-application)` button/label to    */
 /*    44px TALL; this section is the spec-named damage-tray pass — it  */

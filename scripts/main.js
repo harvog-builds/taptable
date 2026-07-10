@@ -5,8 +5,10 @@
  *  - Register the client-scoped `taptable.mode` setting (auto | phone | off).
  *  - Resolve phone detection at init and add `body.pf-mobile` (+ `pf-ios`) when active.
  *  - Expose the public API at game.modules.get("taptable").api:
- *    { isMobile, vh, registerTab, openCompendiumPicker } (+ active/mode
- *    diagnostics). registerTab is deliberately live on ALL clients (soft contract
+ *    { isMobile, vh, registerTab, openCompendiumPicker, registerSystemAdapter }
+ *    (+ active/mode diagnostics). registerSystemAdapter lets third parties add
+ *    support for a game system at runtime (see scripts/adapter-registry.js).
+ *    registerTab is deliberately live on ALL clients (soft contract
  *    for other modules — it only mutates a registry; without pf-mobile the
  *    registry is never rendered). openCompendiumPicker likewise early-returns
  *    without pf-mobile, so exposing it on every client is harmless.
@@ -18,7 +20,11 @@
  * toggle spoofs it (verified on-device, M0 baseline round 2). A phone must look like
  * a phone three ways at once: coarse pointer AND multi-touch AND a small screen.
  */
-import { initSheet5e } from "./sheet5e.js";
+import { resolveAdapter, registerSystemAdapter } from "./adapter-registry.js";
+// Side-effect import: the bundled dnd5e reference adapter self-registers at load.
+// Third parties add support for other systems by shipping (or runtime-registering
+// via the api.registerSystemAdapter exposed below) an adapter for their system id.
+import "../adapters/dnd5e.js";
 import { initViewport } from "./viewport.js";
 import { initDragDrop } from "./dragdrop.js";
 import { initShell, registerTab, currentVh } from "./shell.js";
@@ -60,7 +66,7 @@ function detectIOS() {
 
 Hooks.once("init", () => {
   game.settings.register(MODULE_ID, "mode", {
-    name: "Pocket Foundry Mode",
+    name: "TapTable Mode",
     hint: "auto: enable the phone UI only when a phone-sized touch device is detected. "
       + "phone: force the phone UI on for this client. off: never activate on this client.",
     scope: "client",
@@ -87,7 +93,7 @@ Hooks.once("init", () => {
   // Public API (M2): isMobile/vh/registerTab per the shell contract, plus
   // active/mode diagnostics kept from M1.
   const mod = game.modules.get(MODULE_ID);
-  if ( mod ) mod.api = { isMobile: () => active, vh: currentVh, registerTab, openCompendiumPicker, active, mode };
+  if ( mod ) mod.api = { isMobile: () => active, vh: currentVh, registerTab, openCompendiumPicker, registerSystemAdapter, active, mode };
 
   // mode=off or auto non-match: no body class, and nothing below ever runs.
   if ( !active ) return;
@@ -95,9 +101,10 @@ Hooks.once("init", () => {
   document.body.classList.add("pf-mobile");
   if ( detectIOS() ) document.body.classList.add("pf-ios");
 
-  // Order matters: the dnd5e widget CSS patch must run at the top of init, before
-  // any sheet render can fill dnd5e's adopted-stylesheet caches (dnd5e.mjs:50660).
-  initSheet5e();
+  // Order matters: the active system adapter's sheet touch patches must run at the
+  // top of init, before any sheet render can fill a system's adopted-stylesheet
+  // caches (the dnd5e adapter appends to dnd5e widget CSS; NullAdapter is a no-op).
+  resolveAdapter().sheetTouchPatches();
   initViewport();
   initDragDrop();
   initShell();

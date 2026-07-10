@@ -8,12 +8,15 @@
  * placed at all.
  *
  * Design (frozen — spec Feature D, ~/reviews/2026-07-09-taptable-combat-spec.md:143):
- * do NOT rebind dnd5e's private #events closure. Build OUR OWN placement flow:
- *  - Intercept dnd5e AbilityTemplate.prototype.drawPreview (dnd5e.mjs:16353) under
- *    pf-mobile via libWrapper (fallback: a one-client prototype patch, then a manual
- *    entry) and launch our placement instead of dnd5e's mouse flow. `fromActivity`
- *    (dnd5e.mjs:16266) has already built the template document + shape on the intercepted
- *    instance (`this`), so we drive position/direction ourselves from taps + buttons.
+ * do NOT rebind the system's private placement closure. Build OUR OWN placement flow:
+ *  - The SYSTEM-SPECIFIC intercept (for dnd5e: wrapping AbilityTemplate.prototype.
+ *    drawPreview via libWrapper, with a one-client prototype-patch fallback) lives in
+ *    the active system adapter (resolveAdapter().interceptTemplatePlacement). It calls
+ *    back into this module (launchInterceptedPlacement) with the template-like instance
+ *    to launch our placement instead of the system's mouse flow. By then the system has
+ *    already built the template document + shape on that instance, so we drive
+ *    position/direction ourselves from taps + buttons. NullAdapter declines, and the
+ *    generic manual entry (startManualPlacement) is the universal fallback.
  *  - A SINGLE canvas tap sets the template ORIGIN (federated getLocalPosition against
  *    canvas.templates, or canvas.mousePosition). We bind `canvas.stage.on("pointerup")`
  *    (pointer* IS touch-compatible in PIXI 7.4.3, unlike mouse*). We NEVER stopPropagation
@@ -32,9 +35,11 @@
  * client — dnd5e's normal mouse flow runs completely unchanged there.
  */
 
+import { resolveAdapter } from "./adapter-registry.js";
+
 const MODULE_ID = "taptable";
 
-/** Overlay DOM id (also the CSS hook: body.pf-mobile #pf-template-overlay in pf-core.css). */
+/** Overlay DOM id (also the CSS hook: body.pf-mobile #pf-template-overlay in taptable-core.css). */
 const OVERLAY_ID = "pf-template-overlay";
 
 /** Degrees per Rotate press. dnd5e uses 15 on square grids (dnd5e.mjs:16465, `delta`). */
@@ -43,8 +48,9 @@ const ROTATE_STEP = 15;
 /** The single in-flight placement controller, or null when idle. */
 let controller = null;
 
-/** How the drawPreview intercept was installed: "libWrapper" | "manual-patch" | null. */
-let interceptInstalled = null;
+/** Whether the active system adapter installed a placement intercept (boolean).
+ *  The install mechanism (libWrapper vs prototype patch) is the adapter's concern. */
+let interceptInstalled = false;
 
 /** pf-mobile flag test — the whole feature is gated on it (desktop zero-impact). */
 function isActive() {
@@ -292,41 +298,38 @@ function startManualPlacement(opts = {}) {
 }
 
 /**
- * Install the drawPreview intercept: under pf-mobile, dnd5e AbilityTemplate placement is
- * replaced by our native tap-to-place. libWrapper preferred; a one-client prototype patch
- * is the fallback if libWrapper is absent/fails. Off-mobile / off-gen-14 the wrapper defers
- * to dnd5e's original (and on desktop this is never even registered).
+ * The generic intercept callback handed to the system adapter. The adapter wraps its
+ * system's AoE placement entry (e.g. dnd5e AbilityTemplate#drawPreview) and calls this
+ * with the template-like instance when it fires: under pf-mobile + gen 14 we return a
+ * native tap-to-place session (beginPlacement) that supersedes the system's mouse flow;
+ * otherwise we return null so the adapter defers to the system's own placement.
+ * @param {object} object  A MeasuredTemplate/AbilityTemplate instance from the system.
+ * @returns {Promise|null}
+ */
+function launchInterceptedPlacement(object) {
+  if (!isActive() || game.release?.generation !== 14) return null;
+  return beginPlacement(object, canvas.activeLayer);
+}
+
+/**
+ * Install the AoE placement intercept via the active system adapter
+ * (resolveAdapter().interceptTemplatePlacement — the dnd5e adapter replaces
+ * AbilityTemplate#drawPreview with our native tap-to-place; NullAdapter returns false).
+ * The generic manual placement engine (startManualPlacement) remains the universal
+ * fallback on any system whose adapter declines. This whole module early-returns
+ * without pf-mobile, so a desktop client never installs anything.
  */
 function registerInterceptor() {
-  const AbilityTemplate = globalThis.dnd5e?.canvas?.AbilityTemplate ?? game.dnd5e?.canvas?.AbilityTemplate;
-  if (!AbilityTemplate?.prototype) {
-    console.warn(`${MODULE_ID} | templates: dnd5e AbilityTemplate not found; native intercept NOT installed. Manual entry available at game.modules.get("${MODULE_ID}").api.templates.startManual().`);
-    return;
+  let installed = false;
+  try {
+    installed = resolveAdapter().interceptTemplatePlacement(launchInterceptedPlacement) === true;
+  } catch (err) {
+    console.warn(`${MODULE_ID} | templates: system adapter interceptTemplatePlacement threw.`, err);
   }
-
-  if (globalThis.libWrapper?.register) {
-    try {
-      libWrapper.register(MODULE_ID, "dnd5e.canvas.AbilityTemplate.prototype.drawPreview",
-        function (wrapped, ...args) {
-          if (!isActive() || game.release?.generation !== 14) return wrapped(...args);
-          return beginPlacement(this, canvas.activeLayer);
-        }, "MIXED");
-      interceptInstalled = "libWrapper";
-      return;
-    } catch (err) {
-      console.warn(`${MODULE_ID} | templates: libWrapper registration failed; falling back to a one-client prototype patch.`, err);
-    }
+  interceptInstalled = installed;
+  if (!installed) {
+    console.warn(`${MODULE_ID} | templates: no system AoE placement intercept installed (the active system's adapter declined or its template class is absent); the generic manual entry remains at game.modules.get("${MODULE_ID}").api.templates.startManual().`);
   }
-
-  // Fallback: patch the prototype on THIS client only (this whole module early-returns
-  // without pf-mobile, so no desktop client ever reaches here).
-  const proto = AbilityTemplate.prototype;
-  const original = proto.drawPreview;
-  proto.drawPreview = function (...args) {
-    if (!isActive() || game.release?.generation !== 14) return original.apply(this, args);
-    return beginPlacement(this, canvas.activeLayer);
-  };
-  interceptInstalled = "manual-patch";
 }
 
 /**

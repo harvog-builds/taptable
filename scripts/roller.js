@@ -3,42 +3,26 @@
  *
  * A shell-owned "Roller" pane: a manual dice builder (die picker, count stepper,
  * Advantage/Normal/Disadvantage selector, manual modifier stepper) plus automated
- * ability-check / saving-throw / skill buttons that roll through the standard
- * dnd5e 5.3.3 actor APIs. Wiring: shell.js imports buildRollerPane() and registers
- * the "roller" tab in registerBuiltinTabs(); this module renders the pane and owns
- * the roll handlers. Nothing here runs on desktop clients: the pane is only ever
- * built by the PocketShell, whose initShell() early-returns without body.pf-mobile
- * (and buildRollerPane() carries its own belt-and-braces guard).
+ * roll buttons. This module is SYSTEM-AGNOSTIC: the manual builder is pure core
+ * dice, and the automated half is delegated to the active system adapter —
+ * resolveAdapter().getRollables(actor) supplies the sections/entries to render and
+ * resolveAdapter().roll(actor, kind, key, opts) executes a tapped roll. On a system
+ * with no adapter (NullAdapter) getRollables returns null and the pane shows the
+ * manual builder plus a system-neutral empty state; the dnd5e-shaped modifier math,
+ * CONFIG.DND5E reads and dnd5e roll APIs live in adapters/dnd5e.js.
  *
- * dnd5e 5.3.3 facts this module relies on (dist line numbers from
- * /home/foundry/Data/systems/dnd5e/dnd5e.mjs):
- *  - Actor5e#rollAbilityCheck(config, dialog, message) — dnd5e.mjs:37418;
- *    #rollSavingThrow — :37440; #rollSkill — :37194. The legacy rollAbilityTest/
- *    rollAbilitySave do NOT exist in this dist.
- *  - Advantage mode: top-level `config.advantage` / `config.disadvantage` booleans
- *    are folded into roll.options.advantageMode by D20Roll.applyKeybindings
- *    (dnd5e.mjs:78851-78855) during BasicRoll.buildConfigure (:68415).
- *  - Usage dialog: `dialog.configure = false` skips the configuration dialog and
- *    builds the rolls straight from the config (dnd5e.mjs:68419-68426); both
- *    applyKeybindings implementations respect the explicit false via `??=`
- *    (:68504, :78844). This is what makes "tapping a modifier executes the roll"
- *    a single-tap flow.
- *  - Situational modifier: `config.rolls = [{ parts: ["@situational"], data:
- *    { situational: N } }]` — the exact mechanism the dnd5e roll dialog itself
- *    uses (dnd5e.mjs:19809-19812). The entry is merged into the constructed roll
- *    by D20Roll.mergeConfigs (parts unshifted, data assigned — :68762-68771) at
- *    #rollD20Test :37489-37491 and #rollSkillTool :37279-37284 (skill buildConfig
- *    preserves caller parts/data at :37373-37374).
- *  - Roll mode: no rollMode/messageMode is ever passed, so posting falls through
- *    to the user's active setting — dnd5e message path reads
- *    game.settings.get("core", "messageMode") on v14 (dnd5e.mjs:68750); the manual
- *    path uses core Roll#toMessage, same default (client/dice/roll.mjs:926-932).
- *  - Displayed modifiers read what dnd5e itself prepares on actor.system:
- *    ability check = mod + checkBonus (+ numeric checkProf.flat) — the same fields
- *    the roll consumes (prep :26571-26572, roll parts :37471-37477); saving throw
- *    = abilities[k].save.value (:26574-26575); skill = skills[k].total
- *    (:71828-71829).
+ * Wiring: shell.js imports buildRollerPane() and registers the "roller" tab in
+ * registerBuiltinTabs(); this module renders the pane and owns the (generic) roll
+ * dispatch + snap-to-chat. Nothing here runs on desktop clients: the pane is only
+ * ever built by the PocketShell, whose initShell() early-returns without
+ * body.pf-mobile (and buildRollerPane() carries its own belt-and-braces guard).
+ *
+ * Roll mode: the manual path passes no messageMode, so posting falls through to the
+ * user's active roll-mode setting (core Roll#toMessage, client/dice/roll.mjs:926-932);
+ * the adapter's automated rolls likewise leave messageMode to the system default.
  */
+
+import { resolveAdapter } from "./adapter-registry.js";
 
 const MODULE_ID = "taptable";
 
@@ -99,51 +83,13 @@ function h(tag, attrs = {}, children = []) {
 }
 
 /* -------------------------------------------- */
-/*  Modifier computation (pure actor.system)    */
+/*  Display formatting                          */
 /* -------------------------------------------- */
 
 /** Signed display for a modifier: 3 -> "+3", -1 -> "-1", 0 -> "+0". */
 function signed(n) {
   const v = Number.isFinite(n) ? n : 0;
   return `${v >= 0 ? "+" : ""}${v}`;
-}
-
-/**
- * The numeric flat value of a dnd5e Proficiency object, or 0 when it is absent
- * or non-numeric — mirroring dnd5e's own display logic (`Number.isNumeric(term)`
- * guard, dnd5e.mjs:26575/:71829; Number.isNumeric is the foundry primitive
- * extension, common/primitives/number.mjs:111).
- * @param {object} prof
- * @returns {number}
- */
-function profFlat(prof) {
-  try {
-    if ( !prof ) return 0;
-    const numeric = (typeof Number.isNumeric === "function")
-      ? Number.isNumeric(prof.term)
-      : Number.isFinite(Number(prof.term));
-    return numeric ? (prof.flat ?? 0) : 0;
-  } catch(err) {
-    return 0;
-  }
-}
-
-/** Ability CHECK total as dnd5e prepares it: mod + checkBonus + numeric prof
- *  (prep dnd5e.mjs:26571-26572; the same fields the roll consumes, :37471-37477). */
-function abilityCheckTotal(abl) {
-  return (abl?.mod ?? 0) + (abl?.checkBonus ?? 0) + profFlat(abl?.checkProf);
-}
-
-/** Saving-throw total: dnd5e prepares abilities[k].save.value (dnd5e.mjs:26574-26575). */
-function saveTotal(abl) {
-  if ( typeof abl?.save?.value === "number" ) return abl.save.value;
-  return (abl?.mod ?? 0) + (abl?.saveBonus ?? 0) + profFlat(abl?.saveProf);
-}
-
-/** Skill total: dnd5e prepares skills[k].total (dnd5e.mjs:71828-71829). */
-function skillTotal(sk) {
-  if ( typeof sk?.total === "number" ) return sk.total;
-  return (sk?.mod ?? 0) + (sk?.bonus ?? 0) + profFlat(sk?.prof);
 }
 
 /* -------------------------------------------- */
@@ -172,40 +118,28 @@ function rollActor() {
 /* -------------------------------------------- */
 
 /**
- * Automated ability-check / save / skill roll through the standard dnd5e 5.3.3
- * APIs. Advantage mode travels as config.advantage/disadvantage (folded into
- * roll.options.advantageMode — dnd5e.mjs:78851-78855), the manual modifier as
- * the dialog's own @situational mechanism (dnd5e.mjs:19809-19812), and
- * dialog.configure=false skips the usage dialog (dnd5e.mjs:68419) so a single
- * tap executes the roll. Message creation, speaker, and the active roll mode
- * are all left to dnd5e's defaults. Once the roll is dispatched the shell snaps
- * to its Chat surface (snapToChat) so the result is visible.
- * @param {"check"|"save"|"skill"} kind
- * @param {string} key    Ability id (check/save) or skill id (skill).
+ * Automated roll: resolve the roll actor, delegate the kind/key roll to the active
+ * system adapter (resolveAdapter().roll — the dnd5e adapter maps check/save/skill to
+ * the dnd5e actor APIs; NullAdapter is a no-op), then snap the shell to its Chat
+ * surface so the result is visible. The current builder Advantage mode and manual
+ * modifier travel to the adapter as { advMode, modifier }. Only ever invoked from a
+ * rendered roll button, which exists only when the adapter offered a matching entry.
+ * @param {string} kind   Section kind from getRollables (e.g. "check"|"save"|"skill").
+ * @param {string} key    The entry key (ability/skill id).
  * @param {object} shell  The live PocketShell (for the post-roll snap-to-chat).
  */
 async function executeActorRoll(kind, key, shell) {
   const actor = rollActor();
   if ( !actor ) {
-    ui.notifications?.warn("Pocket Foundry: no actor to roll for.");
+    ui.notifications?.warn("TapTable: no actor to roll for.");
     return;
   }
-  const config = {
-    advantage: state.advMode === 1,
-    disadvantage: state.advMode === -1
-  };
-  if ( state.modifier ) {
-    config.rolls = [{ parts: ["@situational"], data: { situational: state.modifier } }];
-  }
-  const dialog = { configure: false };
   try {
-    if ( kind === "check" ) await actor.rollAbilityCheck({ ability: key, ...config }, dialog);
-    else if ( kind === "save" ) await actor.rollSavingThrow({ ability: key, ...config }, dialog);
-    else if ( kind === "skill" ) await actor.rollSkill({ skill: key, ...config }, dialog);
+    await resolveAdapter().roll(actor, kind, key, { advMode: state.advMode, modifier: state.modifier });
     snapToChat(shell);
   } catch(err) {
-    console.warn(`${MODULE_ID} | roller: ${kind} roll for "${key}" failed (dnd5e API drift?).`, err);
-    ui.notifications?.warn("Pocket Foundry: the roll failed (see console).");
+    console.warn(`${MODULE_ID} | roller: ${kind} roll for "${key}" failed (system adapter API drift?).`, err);
+    ui.notifications?.warn("TapTable: the roll failed (see console).");
   }
 }
 
@@ -247,7 +181,7 @@ async function executeManualRoll(shell) {
     snapToChat(shell);
   } catch(err) {
     console.warn(`${MODULE_ID} | roller: manual roll "${formula}" failed.`, err);
-    ui.notifications?.warn("Pocket Foundry: the roll failed (see console).");
+    ui.notifications?.warn("TapTable: the roll failed (see console).");
   }
 }
 
@@ -448,9 +382,11 @@ function buildGMSection(pane, shell) {
 }
 
 /**
- * Identity row (avatar + name) and the automated roll sections, all values read
- * directly from actor.system (see the modifier helpers above). Tapping any
- * modifier button executes the roll immediately.
+ * Identity row (avatar + name) and the automated roll sections. The sections are
+ * whatever the active system adapter offers (resolveAdapter().getRollables) —
+ * rendered generically as one titled grid of tap-to-roll buttons per section. On a
+ * system with no adapter (getRollables → null / no sections) a system-neutral empty
+ * state is shown and only the manual builder above remains usable.
  */
 function buildActorRollSection(pane, shell, actor) {
   pane.append(h("div", { class: "pf-roller-identity" }, [
@@ -458,53 +394,27 @@ function buildActorRollSection(pane, shell, actor) {
     h("span", { class: "pf-roller-name", text: actor.name })
   ]));
 
-  const abilities = actor.system?.abilities;
-  if ( !abilities || !Object.keys(abilities).length ) {
+  const rollables = resolveAdapter().getRollables(actor);
+  const sections = Array.isArray(rollables?.sections) ? rollables.sections : [];
+  if ( !sections.length ) {
     pane.append(h("p", { class: "pf-empty",
-      text: `${actor.name} has no dnd5e ability data — manual rolls only.` }));
+      text: `No quick rolls are available for ${actor.name} on this game system — the manual dice builder above still works.` }));
     return;
   }
 
-  // Ability checks.
-  pane.append(h("h3", { class: "pf-section-title", text: "Ability Checks" }));
-  const checks = h("div", { class: "pf-roller-grid pf-roller-abilities" });
-  for ( const [id, abl] of Object.entries(abilities) ) {
-    const label = CONFIG.DND5E?.abilities?.[id]?.label ?? id;
-    checks.append(rollButton({
-      label: (CONFIG.DND5E?.abilities?.[id]?.abbreviation ?? id).toUpperCase(),
-      mod: abilityCheckTotal(abl),
-      aria: `Roll ${label} check for ${actor.name}`,
-      kind: "check", key: id, shell
-    }));
-  }
-  pane.append(checks);
-
-  // Saving throws.
-  pane.append(h("h3", { class: "pf-section-title", text: "Saving Throws" }));
-  const saves = h("div", { class: "pf-roller-grid pf-roller-saves" });
-  for ( const [id, abl] of Object.entries(abilities) ) {
-    const label = CONFIG.DND5E?.abilities?.[id]?.label ?? id;
-    saves.append(rollButton({
-      label: (CONFIG.DND5E?.abilities?.[id]?.abbreviation ?? id).toUpperCase(),
-      mod: saveTotal(abl),
-      aria: `Roll ${label} saving throw for ${actor.name}`,
-      kind: "save", key: id, shell
-    }));
-  }
-  pane.append(saves);
-
-  // Skills (actor types without skills — e.g. vehicles — simply skip the section).
-  const skills = actor.system?.skills;
-  if ( skills && Object.keys(skills).length ) {
-    pane.append(h("h3", { class: "pf-section-title", text: "Skills" }));
-    const grid = h("div", { class: "pf-roller-grid pf-roller-skills" });
-    for ( const [id, sk] of Object.entries(skills) ) {
-      const label = CONFIG.DND5E?.skills?.[id]?.label ?? id;
+  for ( const section of sections ) {
+    const entries = Array.isArray(section?.entries) ? section.entries : [];
+    if ( !entries.length ) continue;
+    pane.append(h("h3", { class: "pf-section-title", text: section.title ?? "" }));
+    // Preserve the skills 2-up grid CSS hook (taptable-core.css .pf-roller-skills);
+    // other kinds use the default 3-up grid.
+    const grid = h("div", { class: `pf-roller-grid${section.kind === "skill" ? " pf-roller-skills" : ""}` });
+    for ( const entry of entries ) {
       grid.append(rollButton({
-        label,
-        mod: skillTotal(sk),
-        aria: `Roll ${label} for ${actor.name}`,
-        kind: "skill", key: id, shell
+        label: entry.label,
+        mod: entry.mod,
+        aria: `Roll ${entry.name ?? entry.label} for ${actor.name}`,
+        kind: section.kind, key: entry.key, shell
       }));
     }
     pane.append(grid);

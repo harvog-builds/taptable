@@ -78,6 +78,11 @@ import { buildRollerPane } from "./roller.js";
 // manifest esmodule (its import list is unchanged). openCompendiumPicker
 // early-returns without body.pf-mobile, so importing it here is desktop-safe.
 import { openCompendiumPicker } from "./compendium.js";
+// System-specific integration (sheet detection, Home vitals/favorites, HP writes,
+// initiative) is resolved through the adapter registry so shell.js stays
+// system-agnostic: on dnd5e resolveAdapter() returns the dnd5e adapter, otherwise
+// the NullAdapter (safe no-ops / empty results → the relevant blocks self-hide).
+import { resolveAdapter } from "./adapter-registry.js";
 
 const MODULE_ID = "taptable";
 const CONSENT_SETTING = "perfProfileConsent";
@@ -225,24 +230,6 @@ function elementOf(app) {
 }
 
 /**
- * Is this a dnd5e AppV2 actor sheet? Feature-detected two ways: instanceof the
- * core v14 ActorSheetV2 base AND the dnd5e2 root class — the sheet-mode nav mirrors
- * dnd5e's vertical tab rail markup (nav.tabs, sidebar-tabs.hbs), so a non-dnd5e
- * actor sheet must keep the regular nav.
- * @param {object} app
- * @returns {boolean}
- */
-function isSheet5e(app) {
-  try {
-    const Base = foundry.applications?.sheets?.ActorSheetV2;
-    if ( !Base || !(app instanceof Base) ) return false;
-    return !!elementOf(app)?.classList.contains("dnd5e2");
-  } catch(err) {
-    return false;
-  }
-}
-
-/**
  * The topmost still-open shell-maximized dnd5e actor sheet, or null. Walks the
  * maximization-order stack from the top, skipping anything closed or no longer
  * maximized (stale entries are dropped defensively by the close hook).
@@ -331,7 +318,9 @@ function maximizeApp(app) {
   maxedApps.add(id);
   el?.classList.add("pf-max");
   try { app.bringToFront?.(); } catch(err) { /* stacking is cosmetic; ignore */ }
-  if ( isSheet5e(app) ) trackSheet(app, id);
+  // Only a system actor sheet (dnd5e adapter: instanceof ActorSheetV2 + .dnd5e2) is
+  // tracked for the sheet-mode nav, whose rail mirrors that system's tab markup.
+  if ( resolveAdapter().isSystemSheet(app) ) trackSheet(app, id);
 }
 
 /** Re-apply pf-max after any re-render of a shell-opened app. */
@@ -427,7 +416,7 @@ function canvasIsLive() {
 async function placeActorAtViewCenter(actor) {
   if ( !game.user?.isGM ) return;                          // defense in depth; UI never shows this to non-GM
   if ( !canvasIsLive() ) {
-    ui.notifications?.warn("Pocket Foundry: the map is off on this device (Lite mode) or no scene is viewed — cannot place a token from here.");
+    ui.notifications?.warn("TapTable: the map is off on this device (Lite mode) or no scene is viewed — cannot place a token from here.");
     return;
   }
   if ( placementInFlight ) return;
@@ -440,7 +429,7 @@ async function placeActorAtViewCenter(actor) {
     };
     if ( !Number.isFinite(center.x) || !Number.isFinite(center.y) ) {
       console.warn(`${MODULE_ID} | shell: could not determine the view center (core API drift?).`);
-      ui.notifications?.warn("Pocket Foundry: could not determine the view center; token not placed.");
+      ui.notifications?.warn("TapTable: could not determine the view center; token not placed.");
       return;
     }
     const token = await actor.getTokenDocument({}, { parent: canvas.scene });
@@ -465,10 +454,10 @@ async function placeActorAtViewCenter(actor) {
     }
     token.updateSource(position);
     const created = await canvas.scene.createEmbeddedDocuments("Token", [token.toObject()]);
-    if ( created?.length ) ui.notifications?.info(`Pocket Foundry: placed ${actor.name} at the view center.`);
+    if ( created?.length ) ui.notifications?.info(`TapTable: placed ${actor.name} at the view center.`);
   } catch(err) {
     console.warn(`${MODULE_ID} | shell: token placement failed.`, err);
-    ui.notifications?.warn(`Pocket Foundry: could not place ${actor.name} (see console).`);
+    ui.notifications?.warn(`TapTable: could not place ${actor.name} (see console).`);
   } finally {
     placementInFlight = false;
   }
@@ -911,7 +900,7 @@ class PocketShell extends foundry.applications.api.ApplicationV2 {
       game.togglePause(!game.paused, { broadcast: true });
     } catch(err) {
       console.warn(`${MODULE_ID} | shell: game.togglePause failed (core API drift?).`, err);
-      ui.notifications?.warn("Pocket Foundry: could not toggle the pause state (see console).");
+      ui.notifications?.warn("TapTable: could not toggle the pause state (see console).");
     }
   }
 
@@ -927,7 +916,7 @@ class PocketShell extends foundry.applications.api.ApplicationV2 {
     if ( !game.user?.isGM ) return;
     const scene = game.scenes?.get(target.dataset.sceneId);
     if ( !scene ) {
-      ui.notifications?.warn("Pocket Foundry: that scene no longer exists.");
+      ui.notifications?.warn("TapTable: that scene no longer exists.");
       return;
     }
     this.#pane = null;
@@ -958,13 +947,13 @@ class PocketShell extends foundry.applications.api.ApplicationV2 {
   static #onTokenHud() {
     const tok = canvas?.tokens?.controlled?.[0];
     if ( !tok ) {
-      ui.notifications?.warn("Pocket Foundry: select a token you own first (tap it on the map), then open its HUD.");
+      ui.notifications?.warn("TapTable: select a token you own first (tap it on the map), then open its HUD.");
       return;
     }
     try {
       const hud = canvas.hud?.token;
       if ( !hud ) {
-        ui.notifications?.warn("Pocket Foundry: the token HUD is unavailable here (Lite mode or core API drift).");
+        ui.notifications?.warn("TapTable: the token HUD is unavailable here (Lite mode or core API drift).");
         return;
       }
       if ( hud.rendered && (hud.object === tok) ) hud.close();   // tapping again closes it
@@ -974,7 +963,7 @@ class PocketShell extends foundry.applications.api.ApplicationV2 {
       }
     } catch(err) {
       console.warn(`${MODULE_ID} | shell: token HUD open failed.`, err);
-      ui.notifications?.warn("Pocket Foundry: could not open the token HUD (see console).");
+      ui.notifications?.warn("TapTable: could not open the token HUD (see console).");
     }
   }
 
@@ -994,7 +983,7 @@ class PocketShell extends foundry.applications.api.ApplicationV2 {
       await ui.controls?.activate({ control: "tokens", tool: on ? "select" : "target" });
     } catch(err) {
       console.warn(`${MODULE_ID} | shell: could not toggle target mode.`, err);
-      ui.notifications?.warn("Pocket Foundry: could not toggle target mode (see console).");
+      ui.notifications?.warn("TapTable: could not toggle target mode (see console).");
     }
     if ( shell?.rendered ) shell.render();
   }
@@ -1157,19 +1146,19 @@ class PocketShell extends foundry.applications.api.ApplicationV2 {
    */
   static #onCombatantFocus(_event, target) {
     if ( !canvasIsLive() ) {
-      ui.notifications?.warn("Pocket Foundry: the map is off on this device (Lite mode) or no scene is viewed — cannot focus a combatant.");
+      ui.notifications?.warn("TapTable: the map is off on this device (Lite mode) or no scene is viewed — cannot focus a combatant.");
       return;
     }
     const combat = game.combats?.active;
     const combatant = combat?.combatants?.get(target?.dataset?.combatantId);
     if ( !combatant ) {
-      ui.notifications?.warn("Pocket Foundry: that combatant is no longer in the encounter.");
+      ui.notifications?.warn("TapTable: that combatant is no longer in the encounter.");
       return;
     }
     let token = null;
     try { token = combatant.token?.object ?? null; } catch(err) { /* not on this scene */ }
     if ( !token ) {
-      ui.notifications?.warn("Pocket Foundry: that combatant's token is not on the scene you are viewing.");
+      ui.notifications?.warn("TapTable: that combatant's token is not on the scene you are viewing.");
       return;
     }
     try {
@@ -1180,7 +1169,7 @@ class PocketShell extends foundry.applications.api.ApplicationV2 {
       }
     } catch(err) {
       console.warn(`${MODULE_ID} | shell: focusing a combatant failed.`, err);
-      ui.notifications?.warn("Pocket Foundry: could not focus that combatant (see console).");
+      ui.notifications?.warn("TapTable: could not focus that combatant (see console).");
     }
   }
 
@@ -1224,19 +1213,16 @@ class PocketShell extends foundry.applications.api.ApplicationV2 {
       if ( !combatant?.isOwner ) return;   // defense in depth; the control is player-owned only
       const actor = combatant.actor;
       if ( !actor ) {
-        ui.notifications?.warn("Pocket Foundry: that combatant has no actor to roll initiative for.");
+        ui.notifications?.warn("TapTable: that combatant has no actor to roll initiative for.");
         return;
       }
-      if ( typeof actor.rollInitiativeDialog === "function" ) {
-        Promise.resolve(actor.rollInitiativeDialog()).catch(err => console.warn(`${MODULE_ID} | shell: rollInitiativeDialog failed.`, err));
-      } else if ( typeof actor.rollInitiative === "function" ) {
-        Promise.resolve(actor.rollInitiative({ createCombatants: true })).catch(err => console.warn(`${MODULE_ID} | shell: rollInitiative failed.`, err));
-      } else {
-        ui.notifications?.warn("Pocket Foundry: initiative rolling is unavailable for this actor (system API drift?).");
-      }
+      // The system adapter rolls initiative (dnd5e: rollInitiativeDialog; NullAdapter
+      // falls back to core Actor#rollInitiative({createCombatants:true})).
+      Promise.resolve(resolveAdapter().rollInitiative(actor))
+        .catch(err => console.warn(`${MODULE_ID} | shell: rollInitiative failed.`, err));
     } catch(err) {
       console.warn(`${MODULE_ID} | shell: roll initiative threw.`, err);
-      ui.notifications?.warn("Pocket Foundry: could not roll initiative (see console).");
+      ui.notifications?.warn("TapTable: could not roll initiative (see console).");
     }
   }
 
@@ -1253,7 +1239,7 @@ class PocketShell extends foundry.applications.api.ApplicationV2 {
     if ( !game.user?.isGM ) return;   // defense in depth; never rendered for non-GM
     const scene = game.scenes?.get(target.dataset.sceneId);
     if ( !scene ) {
-      ui.notifications?.warn("Pocket Foundry: that scene no longer exists.");
+      ui.notifications?.warn("TapTable: that scene no longer exists.");
       return;
     }
     const ok = await pfConfirm("Activate scene",
@@ -1262,10 +1248,10 @@ class PocketShell extends foundry.applications.api.ApplicationV2 {
     if ( !ok ) return;
     try {
       await scene.activate();
-      ui.notifications?.info(`Pocket Foundry: activated ${scene.name} for all players.`);
+      ui.notifications?.info(`TapTable: activated ${scene.name} for all players.`);
     } catch(err) {
       console.warn(`${MODULE_ID} | shell: Scene#activate failed.`, err);
-      ui.notifications?.warn(`Pocket Foundry: could not activate ${scene.name} (see console).`);
+      ui.notifications?.warn(`TapTable: could not activate ${scene.name} (see console).`);
     }
   }
 
@@ -1526,19 +1512,19 @@ class PocketShell extends foundry.applications.api.ApplicationV2 {
     let macro = null;
     try { macro = game.macros?.get(id) ?? null; } catch(err) { /* resolved below */ }
     if ( !macro ) {
-      ui.notifications?.warn("Pocket Foundry: that macro is no longer available.");
+      ui.notifications?.warn("TapTable: that macro is no longer available.");
       return;
     }
     if ( typeof macro.execute !== "function" ) {
       console.warn(`${MODULE_ID} | shell: macro "${id}" has no execute() (core API drift?).`, macro);
-      ui.notifications?.warn("Pocket Foundry: that macro cannot be run from here (core API drift?).");
+      ui.notifications?.warn("TapTable: that macro cannot be run from here (core API drift?).");
       return;
     }
     try {
       Promise.resolve(macro.execute()).catch(err => console.warn(`${MODULE_ID} | shell: macro execute failed.`, err));
     } catch(err) {
       console.warn(`${MODULE_ID} | shell: macro execute threw.`, err);
-      ui.notifications?.warn("Pocket Foundry: could not run that macro (see console).");
+      ui.notifications?.warn("TapTable: could not run that macro (see console).");
     }
   }
 
@@ -1677,7 +1663,7 @@ class PocketShell extends foundry.applications.api.ApplicationV2 {
   static #onGmOpenActor(_event, target) {
     const actor = game.actors?.get(target.dataset.actorId);
     if ( !actor ) {
-      ui.notifications?.warn("Pocket Foundry: that actor no longer exists.");
+      ui.notifications?.warn("TapTable: that actor no longer exists.");
       return;
     }
     let result;
@@ -1827,7 +1813,7 @@ class PocketShell extends foundry.applications.api.ApplicationV2 {
       const sheetApp = topSheet();
       if ( sheetApp ) return this.#buildSheetNav(sheetApp);
     }
-    const nav = h("nav", { class: "pf-nav", "aria-label": "Pocket Foundry navigation" });
+    const nav = h("nav", { class: "pf-nav", "aria-label": "TapTable navigation" });
     // v2: only section:"nav" registrations render here (no-section registrations
     // normalized to "nav" in registerTab — M2 behavior preserved); "modules"
     // entries render in the Mods pane instead.
@@ -1925,11 +1911,12 @@ class PocketShell extends foundry.applications.api.ApplicationV2 {
     }
     pane.append(h("h2", { class: "pf-pane-title", text: actor.name }));
 
-    // HP quick-strip: +/- clamped writes through the standard permission-checked
-    // Actor#update path (dnd5e schema: system.attributes.hp.value).
-    const hp = foundry.utils.getProperty(actor, "system.attributes.hp");
-    if ( (typeof hp?.value === "number") && (typeof hp?.max === "number") ) {
-      const label = `${hp.value} / ${hp.max}` + (hp.temp ? ` (+${hp.temp} temp)` : "");
+    // Vitals: whatever the active system adapter reports (dnd5e: HP / hit dice /
+    // death saves), rendered generically. null → the whole vitals block is hidden.
+    const vitals = resolveAdapter().getVitals(actor);
+    if ( vitals?.hp && (typeof vitals.hp.value === "number") && (typeof vitals.hp.max === "number") ) {
+      // HP quick-strip: +/- adjust via resolveAdapter().adjustHp (see #onHpDelta).
+      const label = `${vitals.hp.value} / ${vitals.hp.max}` + (vitals.hp.temp ? ` (+${vitals.hp.temp} temp)` : "");
       pane.append(h("div", { class: "pf-row pf-hp" }, [
         h("span", { class: "pf-row-label", text: "HP" }),
         h("button", { type: "button", class: "pf-btn", "data-action": "pfHpDelta",
@@ -1938,89 +1925,67 @@ class PocketShell extends foundry.applications.api.ApplicationV2 {
         h("button", { type: "button", class: "pf-btn", "data-action": "pfHpDelta",
           "aria-label": "Gain 1 HP", dataset: { delta: "1" }, text: "+" })
       ]));
-    } else {
-      pane.append(h("p", { class: "pf-empty", text: "HP is not available for this actor (non-dnd5e data?)." }));
     }
-
-    // Hit dice (display; spending stays on the sheet).
-    const hd = foundry.utils.getProperty(actor, "system.attributes.hd");
-    if ( typeof hd?.value === "number" ) {
+    if ( vitals?.hitDice && (typeof vitals.hitDice.value === "number") ) {
       pane.append(h("div", { class: "pf-row" }, [
         h("span", { class: "pf-row-label", text: "Hit Dice" }),
-        h("span", { text: `${hd.value} / ${hd.max ?? "?"}` })
+        h("span", { text: `${vitals.hitDice.value} / ${vitals.hitDice.max ?? "?"}` })
       ]));
     }
-
-    // Death saves (display).
-    const death = foundry.utils.getProperty(actor, "system.attributes.death");
-    if ( (typeof death?.success === "number") && (typeof death?.failure === "number") ) {
+    if ( vitals?.death && (typeof vitals.death.success === "number") && (typeof vitals.death.failure === "number") ) {
       pane.append(h("div", { class: "pf-row" }, [
         h("span", { class: "pf-row-label", text: "Death Saves" }),
-        h("span", { text: `✓ ${death.success}  ✗ ${death.failure}` })
+        h("span", { text: `✓ ${vitals.death.success}  ✗ ${vitals.death.failure}` })
       ]));
     }
 
-    // Favorites: dnd5e stores {type, id, sort} with actor-relative UUID ids
-    // (dnd5e.mjs:58440-58450). Item/activity favorites activate via .use().
-    const favorites = Array.isArray(actor.system?.favorites) ? actor.system.favorites : null;
-    pane.append(h("h3", { class: "pf-section-title", text: "Favorites" }));
-    if ( !favorites ) {
-      pane.append(h("p", { class: "pf-empty", text: "Favorites are not available (dnd5e API drift?)." }));
-      return pane;
+    // Favorites: whatever the adapter reports as actionable entries (dnd5e:
+    // item/activity favorites, {id, name, img}). [] → the favorites block is
+    // hidden. Activation routes back through resolveAdapter().useFavorite (#onFavorite).
+    const favorites = resolveAdapter().getFavorites(actor);
+    if ( favorites.length ) {
+      pane.append(h("h3", { class: "pf-section-title", text: "Favorites" }));
+      const list = h("div", { class: "pf-favorites" });
+      for ( const fav of favorites ) {
+        list.append(h("button", {
+          type: "button",
+          class: "pf-favorite",
+          "data-action": "pfFavorite",
+          "aria-label": `Use ${fav.name}`,
+          dataset: { favoriteId: fav.id }
+        }, [
+          fav.img ? h("img", { src: fav.img, alt: "", loading: "lazy" }) : null,
+          h("span", { text: fav.name })
+        ]));
+      }
+      pane.append(list);
     }
-    const list = h("div", { class: "pf-favorites" });
-    for ( const fav of [...favorites].sort((a, b) => (a.sort ?? 0) - (b.sort ?? 0)) ) {
-      if ( !["item", "activity"].includes(fav.type) ) continue;  // skills/tools/slots roll from the sheet
-      let doc = null;
-      try { doc = fromUuidSync(fav.id, { relative: actor }); } catch(err) { /* unresolvable — skip */ }
-      if ( !doc ) continue;
-      const btn = h("button", {
-        type: "button",
-        class: "pf-favorite",
-        "data-action": "pfFavorite",
-        "aria-label": `Use ${doc.name}`,
-        dataset: { favoriteId: fav.id }
-      }, [
-        doc.img ? h("img", { src: doc.img, alt: "", loading: "lazy" }) : null,
-        h("span", { text: doc.name })
-      ]);
-      list.append(btn);
-    }
-    if ( !list.childElementCount ) list.append(h("p", { class: "pf-empty",
-      text: "No item or activity favorites yet. Star entries on the character sheet." }));
-    pane.append(list);
     return pane;
   }
 
   static #onHpDelta(_event, target) {
     const actor = game.user?.character;
-    const hp = foundry.utils.getProperty(actor ?? {}, "system.attributes.hp");
-    if ( (typeof hp?.value !== "number") || (typeof hp?.max !== "number") ) {
-      console.warn(`${MODULE_ID} | shell: HP adjust unavailable (no character or non-dnd5e data).`);
-      return;
-    }
+    if ( !actor ) return;
     const delta = Number(target.dataset.delta) || 0;
-    const next = Math.min(Math.max(hp.value + delta, 0), hp.max);
-    if ( next === hp.value ) return;
-    actor.update({ "system.attributes.hp.value": next })
+    if ( !delta ) return;
+    // The clamp + system-schema write live in the adapter (dnd5e: system.attributes.hp).
+    Promise.resolve(resolveAdapter().adjustHp(actor, delta))
       .catch(err => console.warn(`${MODULE_ID} | shell: HP update failed.`, err));
   }
 
   static #onFavorite(_event, target) {
     const actor = game.user?.character;
     if ( !actor ) return;
+    // Resolve the favorite handle (a core-relative UUID) to its document, then let
+    // the adapter activate it (dnd5e: doc.use()). fromUuidSync is a core global.
     let doc = null;
     try { doc = fromUuidSync(target.dataset.favoriteId, { relative: actor }); } catch(err) { /* handled below */ }
     if ( !doc ) {
-      ui.notifications?.warn("Pocket Foundry: that favorite could not be resolved anymore.");
+      ui.notifications?.warn("TapTable: that favorite could not be resolved anymore.");
       return;
     }
-    if ( typeof doc.use !== "function" ) {
-      ui.notifications?.warn(`Pocket Foundry: "${doc.name}" cannot be activated from here (dnd5e API drift?).`);
-      console.warn(`${MODULE_ID} | shell: favorite has no use() method.`, doc);
-      return;
-    }
-    doc.use().catch(err => console.warn(`${MODULE_ID} | shell: favorite activation failed.`, err));
+    Promise.resolve(resolveAdapter().useFavorite(doc))
+      .catch(err => console.warn(`${MODULE_ID} | shell: favorite activation failed.`, err));
   }
 
   /* ------------------------------------------ */
@@ -2029,12 +1994,12 @@ class PocketShell extends foundry.applications.api.ApplicationV2 {
 
   #buildSettingsPane() {
     const pane = h("section", { class: "pf-pane", dataset: { pane: "settings" } });
-    pane.append(h("h2", { class: "pf-pane-title", text: "Pocket Foundry" }));
+    pane.append(h("h2", { class: "pf-pane-title", text: "TapTable" }));
 
     // Mode selector — binds the existing client setting taptable.mode.
     let mode = "auto";
     try { mode = game.settings.get(MODULE_ID, "mode"); } catch(err) { /* keep default */ }
-    const select = h("select", { "data-pf": "mode", "aria-label": "Pocket Foundry mode" });
+    const select = h("select", { "data-pf": "mode", "aria-label": "TapTable mode" });
     for ( const [value, label] of Object.entries({ auto: "Auto-detect", phone: "Force phone UI", off: "Off" }) ) {
       select.append(h("option", { value, selected: value === mode, text: label }));
     }
@@ -2180,7 +2145,7 @@ class PocketShell extends foundry.applications.api.ApplicationV2 {
     }
     if ( !app ) {
       console.warn(`${MODULE_ID} | shell: core SettingsConfig is unavailable (core API drift?).`);
-      ui.notifications?.warn("Pocket Foundry: could not open the settings configuration (see console).");
+      ui.notifications?.warn("TapTable: could not open the settings configuration (see console).");
       return;
     }
     let result;
@@ -2188,7 +2153,7 @@ class PocketShell extends foundry.applications.api.ApplicationV2 {
       result = app.render(true);
     } catch(err) {
       console.warn(`${MODULE_ID} | shell: SettingsConfig render failed.`, err);
-      ui.notifications?.warn("Pocket Foundry: could not open the settings configuration (see console).");
+      ui.notifications?.warn("TapTable: could not open the settings configuration (see console).");
       return;
     }
     if ( result && (typeof result.then === "function") ) {
@@ -2221,7 +2186,7 @@ class PocketShell extends foundry.applications.api.ApplicationV2 {
     const menu = game.settings?.menus?.get?.(key);
     if ( typeof menu?.type !== "function" ) {
       console.warn(`${MODULE_ID} | shell: setting menu "${key}" is no longer available.`);
-      ui.notifications?.warn("Pocket Foundry: that settings menu is no longer available.");
+      ui.notifications?.warn("TapTable: that settings menu is no longer available.");
       return;
     }
     let app;
@@ -2229,7 +2194,7 @@ class PocketShell extends foundry.applications.api.ApplicationV2 {
       app = new menu.type();
     } catch(err) {
       console.warn(`${MODULE_ID} | shell: setting menu "${key}" failed to construct.`, err);
-      ui.notifications?.warn("Pocket Foundry: could not open that settings menu (see console).");
+      ui.notifications?.warn("TapTable: could not open that settings menu (see console).");
       return;
     }
     const isV2 = app instanceof foundry.applications.api.ApplicationV2;
@@ -2247,7 +2212,7 @@ class PocketShell extends foundry.applications.api.ApplicationV2 {
     } catch(err) {
       if ( hookId !== null ) Hooks.off("renderApplication", hookId);
       console.warn(`${MODULE_ID} | shell: setting menu "${key}" failed to open.`, err);
-      ui.notifications?.warn("Pocket Foundry: could not open that settings menu (see console).");
+      ui.notifications?.warn("TapTable: could not open that settings menu (see console).");
       return;
     }
     if ( isV2 ) {
@@ -2307,7 +2272,7 @@ class PocketShell extends foundry.applications.api.ApplicationV2 {
       }
     }
     await applyPerfProfile();
-    ui.notifications?.info("Pocket Foundry: battery-saver graphics profile applied.");
+    ui.notifications?.info("TapTable: battery-saver graphics profile applied.");
     this.render();
   }
 
