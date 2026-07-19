@@ -42,7 +42,7 @@ TapTable wraps your world in a phone-shaped interface so the things you actually
 **Manifest URL**: in **Add-on Modules → Install Module**, paste this into the Manifest URL field:
 
 ```
-https://github.com/warros99/taptable/releases/latest/download/module.json
+https://github.com/harvog-builds/taptable/releases/latest/download/module.json
 ```
 
 Then enable TapTable in your world's module settings.
@@ -68,12 +68,12 @@ More deep integrations are on the way, and community adapters are welcome. There
 
 Works with **Foundry VTT v14**.
 
-Phones and tablets vary wildly, and TapTable is young. We'd love your real-world feedback. If a button is out of reach or a menu looks wonky on your device, [open an issue](https://github.com/warros99/taptable/issues) with your device, browser, and Foundry version so we can patch it!
+Phones and tablets vary wildly, and TapTable is young. We'd love your real-world feedback. If a button is out of reach or a menu looks wonky on your device, [open an issue](https://github.com/harvog-builds/taptable/issues) with your device, browser, and Foundry version so we can patch it!
 
 ## Support the project
 
-- Found a bug or have a request? [GitHub issues](https://github.com/warros99/taptable/issues)
-- Want to support development? [Join the Patreon](PATREON_URL). The free tier gets you release news, and Supporters get the upcoming premium modules.
+- Found a bug or have a request? [GitHub issues](https://github.com/harvog-builds/taptable/issues)
+- Want to support development? [Join the Patreon](PATREON_URL). Tavern Friends get the news, and Party Members get every premium module as it lands.
 
 ## Contributing
 
