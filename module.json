@@ -1,7 +1,7 @@
 {
   "id": "taptable",
   "title": "TapTable",
-  "description": "A mobile and touch usability layer for Foundry VTT: a phone shell with bottom navigation (Home, Board, Sheet, Roller, Chat, Combat, Macros, Mods, Settings), visual-viewport and on-screen-keyboard management, touch drag-and-drop, canvas touch gestures, and touch-friendly combat interaction (token HUD, targeting, multi-select, combatant carousel). The core is system-agnostic and degrades gracefully on any game system; a dnd5e reference adapter provides sheet, roll, and compendium integration. Zero desktop impact: every style and behavior is gated behind the body.pf-mobile flag. Not affiliated with or endorsed by Foundry Gaming LLC.",
+  "description": "Play Foundry VTT from your phone or tablet. TapTable wraps your world in a phone-shaped interface: bottom navigation (Home, Board, Sheet, Roller, Chat, Combat, Macros, Mods, Settings), touch drag-and-drop, canvas gestures, touch-friendly combat (token controls, targeting, multi-select, combatant carousel), a quick-roll dice builder with a \"Roll as...\" actor picker, and graceful reconnect handling. Activates automatically on phones only, so desktop players see zero change. Deep D&D 5e integration out of the box (touch character sheet, HP/vitals, favorites, one-tap checks/saves/skills, initiative, compendium browsing, template placement); the essentials work on any game system, and developers can add deep support for more systems via the adapter API (see ADAPTERS.md). Ships in English, French, German, Spanish, Brazilian Portuguese, and Italian. Not affiliated with or endorsed by Foundry Gaming LLC.",
   "version": "0.1.0",
   "compatibility": {
     "minimum": "14",
@@ -24,6 +24,31 @@
       "lang": "en",
       "name": "English",
       "path": "lang/en.json"
+    },
+    {
+      "lang": "fr",
+      "name": "Français",
+      "path": "lang/fr.json"
+    },
+    {
+      "lang": "de",
+      "name": "Deutsch",
+      "path": "lang/de.json"
+    },
+    {
+      "lang": "es",
+      "name": "Español",
+      "path": "lang/es.json"
+    },
+    {
+      "lang": "pt-BR",
+      "name": "Português (Brasil)",
+      "path": "lang/pt-BR.json"
+    },
+    {
+      "lang": "it",
+      "name": "Italiano",
+      "path": "lang/it.json"
     }
   ],
   "url": "https://github.com/warros99/taptable",
