@@ -81,7 +81,7 @@
 
   "TAPTABLE.GameMaster": "Game Master",
   "TAPTABLE.SearchActors": "Search actors",
-  "TAPTABLE.SearchActorsPlaceholder": "Search {count} actors…",
+  "TAPTABLE.SearchActorsPlaceholder": "Search actors…",
   "TAPTABLE.OpenActor": "Open {name}",
   "TAPTABLE.PlaceActor": "Place {name} on the scene",
   "TAPTABLE.NoActorsMatch": "No actors match that search.",

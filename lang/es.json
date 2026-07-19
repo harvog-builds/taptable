@@ -81,7 +81,7 @@
 
   "TAPTABLE.GameMaster": "Director de Juego",
   "TAPTABLE.SearchActors": "Buscar actores",
-  "TAPTABLE.SearchActorsPlaceholder": "Buscar entre {count} actores…",
+  "TAPTABLE.SearchActorsPlaceholder": "Buscar actores…",
   "TAPTABLE.OpenActor": "Abrir {name}",
   "TAPTABLE.PlaceActor": "Colocar {name} en la escena",
   "TAPTABLE.NoActorsMatch": "Ningún actor coincide con esa búsqueda.",

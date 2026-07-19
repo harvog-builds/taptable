@@ -81,7 +81,7 @@
 
   "TAPTABLE.GameMaster": "Spielleiter",
   "TAPTABLE.SearchActors": "Akteure durchsuchen",
-  "TAPTABLE.SearchActorsPlaceholder": "{count} Akteure durchsuchen…",
+  "TAPTABLE.SearchActorsPlaceholder": "Akteure durchsuchen…",
   "TAPTABLE.OpenActor": "{name} öffnen",
   "TAPTABLE.PlaceActor": "{name} auf der Szene platzieren",
   "TAPTABLE.NoActorsMatch": "Keine Akteure entsprechen dieser Suche.",

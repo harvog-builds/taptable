@@ -81,7 +81,7 @@
 
   "TAPTABLE.GameMaster": "Mestre",
   "TAPTABLE.SearchActors": "Buscar atores",
-  "TAPTABLE.SearchActorsPlaceholder": "Buscar {count} atores…",
+  "TAPTABLE.SearchActorsPlaceholder": "Buscar atores…",
   "TAPTABLE.OpenActor": "Abrir {name}",
   "TAPTABLE.PlaceActor": "Colocar {name} na cena",
   "TAPTABLE.NoActorsMatch": "Nenhum ator corresponde a essa busca.",

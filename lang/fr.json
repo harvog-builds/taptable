@@ -81,7 +81,7 @@
 
   "TAPTABLE.GameMaster": "Maître de Jeu",
   "TAPTABLE.SearchActors": "Rechercher des acteurs",
-  "TAPTABLE.SearchActorsPlaceholder": "Rechercher parmi {count} acteurs…",
+  "TAPTABLE.SearchActorsPlaceholder": "Rechercher un acteur…",
   "TAPTABLE.OpenActor": "Ouvrir {name}",
   "TAPTABLE.PlaceActor": "Placer {name} sur la scène",
   "TAPTABLE.NoActorsMatch": "Aucun acteur ne correspond à cette recherche.",
