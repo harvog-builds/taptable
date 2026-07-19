@@ -37,7 +37,7 @@ jobs:
       - name: Build module.zip
         run: |
           zip -r module.zip \
-            module.json LICENSE NOTICE README.md \
+            module.json LICENSE NOTICE README.md ADAPTERS.md \
             scripts/ adapters/ styles/ lang/ \
             -x "*.git*"
 
@@ -49,3 +49,13 @@ jobs:
             --title "TapTable $GITHUB_REF_NAME" \
             --generate-notes \
             module.zip module.json
+
+      - name: Announce in Discord (Harvog's Tavern)
+        if: success()
+        env:
+          WEBHOOK: ${{ secrets.DISCORD_RELEASE_WEBHOOK }}
+        run: |
+          if [ -z "$WEBHOOK" ]; then echo "no webhook secret; skipping announce"; exit 0; fi
+          curl -sf -H "Content-Type: application/json" \
+            -d "{\"content\": \"🍺 **TapTable ${GITHUB_REF_NAME}** is out! Update from Foundry's module manager, or read the notes: <https://github.com/${GITHUB_REPOSITORY}/releases/tag/${GITHUB_REF_NAME}>\"}" \
+            "$WEBHOOK" || echo "announce failed (non-fatal)"
