@@ -73,7 +73,7 @@ Phones and tablets vary wildly, and TapTable is young. We'd love your real-world
 ## Support the project
 
 - Found a bug or have a request? [GitHub issues](https://github.com/harvog-builds/taptable/issues)
-- Want to support development? [Join the Patreon](PATREON_URL). Tavern Friends get the news, and Party Members get every premium module as it lands.
+- Want to support development? [Join the Patreon](https://www.patreon.com/Harvog). Tavern Friends get the news, and Party Members get every premium module as it lands.
 
 ## Contributing
 
