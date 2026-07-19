@@ -18,6 +18,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # need the annotated tag object to read its message
 
       - name: Read version from tag
         id: version
@@ -50,12 +52,20 @@ jobs:
             --generate-notes \
             module.zip module.json
 
+      # Announcements are OPT-IN: only tags whose annotation message contains the
+      # literal marker [announce] post to Discord. A plain tag ships silently.
+      #   silent : git tag -a v1.0.1 -m "minor i18n fixes"
+      #   announce: git tag -a v1.1.0 -m "combat carousel [announce]"
       - name: Announce in Discord (Harvog's Tavern)
         if: success()
         env:
           WEBHOOK: ${{ secrets.DISCORD_RELEASE_WEBHOOK }}
         run: |
           if [ -z "$WEBHOOK" ]; then echo "no webhook secret; skipping announce"; exit 0; fi
+          MSG=$(git for-each-ref "refs/tags/${GITHUB_REF_NAME}" --format='%(contents)')
+          if ! printf '%s' "$MSG" | grep -qF '[announce]'; then
+            echo "tag has no [announce] marker; shipping silently"; exit 0
+          fi
           curl -sf -H "Content-Type: application/json" \
             -d "{\"content\": \"🍺 **TapTable ${GITHUB_REF_NAME}** is out! Update from Foundry's module manager, or read the notes: <https://github.com/${GITHUB_REPOSITORY}/releases/tag/${GITHUB_REF_NAME}>\"}" \
             "$WEBHOOK" || echo "announce failed (non-fatal)"
