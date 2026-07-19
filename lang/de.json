@@ -203,8 +203,8 @@
   "TAPTABLE.Cancel": "Abbrechen",
   "TAPTABLE.Confirm": "Bestätigen",
 
-  "TAPTABLE.AbilityChecks": "Attributswürfe",
-  "TAPTABLE.SavingThrows": "Rettungswürfe",
+  "TAPTABLE.AbilityChecks": "Attributswurf",
+  "TAPTABLE.SavingThrows": "Rettungswurf",
   "TAPTABLE.Skills": "Fertigkeiten",
   "TAPTABLE.AbilityCheckName": "{ability}-Wurf",
   "TAPTABLE.SavingThrowName": "{ability}-Rettungswurf",
