@@ -3,3 +3,8 @@ node_modules/
 *.log
 .aider*
 *.zip
+
+# local-only agent charter — never publish internal scope/identity notes
+/CLAUDE.md
+/STATUS.md
+/.claude/
