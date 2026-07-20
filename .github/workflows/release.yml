@@ -62,9 +62,14 @@ jobs:
           WEBHOOK: ${{ secrets.DISCORD_RELEASE_WEBHOOK }}
         run: |
           if [ -z "$WEBHOOK" ]; then echo "no webhook secret; skipping announce"; exit 0; fi
-          MSG=$(git for-each-ref "refs/tags/${GITHUB_REF_NAME}" --format='%(contents)')
+          # Read the ANNOTATED TAG object's own message only — NOT the peeled
+          # commit message (for-each-ref/%(contents) can resolve to the commit in
+          # CI, and a commit body mentioning "[announce]" would false-trigger).
+          # git cat-file tag reads the tag object; it fails on a lightweight tag,
+          # which then falls through to silent. Message body is line 6 onward.
+          MSG=$(git cat-file tag "${GITHUB_REF_NAME}" 2>/dev/null | tail -n +6 || true)
           if ! printf '%s' "$MSG" | grep -qF '[announce]'; then
-            echo "tag has no [announce] marker; shipping silently"; exit 0
+            echo "tag message has no [announce] marker (or lightweight tag); shipping silently"; exit 0
           fi
           curl -sf -H "Content-Type: application/json" \
             -d "{\"content\": \"🍺 **TapTable ${GITHUB_REF_NAME}** is out! Update from Foundry's module manager, or read the notes: <https://github.com/${GITHUB_REPOSITORY}/releases/tag/${GITHUB_REF_NAME}>\"}" \
